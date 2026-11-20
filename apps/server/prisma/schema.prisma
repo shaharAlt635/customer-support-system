@@ -1,0 +1,196 @@
+// Prisma schema for the Support Desk API.
+// MongoDB must run as a replica set because Prisma uses transactions for nested writes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AGENT
+  CUSTOMER
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_ON_CUSTOMER
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketEventType {
+  CREATED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  CATEGORY_CHANGED
+  ASSIGNEE_CHANGED
+  SUBJECT_CHANGED
+}
+
+model User {
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role      @default(CUSTOMER)
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  requestedTickets Ticket[]       @relation("TicketCustomer")
+  assignedTickets  Ticket[]       @relation("TicketAssignee")
+  messages         Message[]
+  attachments      Attachment[]
+  events           TicketEvent[]
+  refreshTokens    RefreshToken[]
+
+  @@index([role, isActive])
+  @@map("users")
+}
+
+/// Opaque refresh tokens (stored as SHA-256 hashes). Tokens issued from the same login
+/// share a familyId so the whole chain can be revoked if a rotated token is reused.
+model RefreshToken {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String    @db.ObjectId
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  familyId  String
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+  @@index([familyId])
+  @@map("refresh_tokens")
+}
+
+model Category {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  name        String   @unique
+  description String?
+  color       String   @default("#6366f1")
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tickets Ticket[]
+
+  @@map("categories")
+}
+
+model Ticket {
+  id              String         @id @default(auto()) @map("_id") @db.ObjectId
+  /// Human-friendly sequential number (e.g. #1042), generated from the `counters` collection.
+  number          Int            @unique
+  subject         String
+  description     String
+  status          TicketStatus   @default(OPEN)
+  priority        TicketPriority @default(MEDIUM)
+  /// Mirrors `priority` as a number so the list can be sorted by urgency.
+  priorityRank    Int            @default(2)
+  categoryId      String?        @db.ObjectId
+  category        Category?      @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  customerId      String         @db.ObjectId
+  customer        User           @relation("TicketCustomer", fields: [customerId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  assigneeId      String?        @db.ObjectId
+  assignee        User?          @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  firstResponseAt DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  lastActivityAt  DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  messages    Message[]
+  attachments Attachment[]
+  events      TicketEvent[]
+
+  @@index([status, lastActivityAt])
+  @@index([customerId, lastActivityAt])
+  @@index([assigneeId, status])
+  @@index([categoryId])
+  @@index([priorityRank, createdAt])
+  @@index([createdAt])
+  @@index([resolvedAt])
+  @@map("tickets")
+}
+
+/// A reply in a ticket's conversation. Internal notes (`isInternal`) are staff-only.
+model Message {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId   String   @db.ObjectId
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  authorId   String   @db.ObjectId
+  author     User     @relation(fields: [authorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  body       String
+  isInternal Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  attachments Attachment[]
+
+  @@index([ticketId, createdAt])
+  @@map("messages")
+}
+
+model Attachment {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId   String   @db.ObjectId
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  /// Null when the file was attached to the ticket itself rather than to a reply.
+  messageId  String?  @db.ObjectId
+  message    Message? @relation(fields: [messageId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  uploaderId String   @db.ObjectId
+  uploader   User     @relation(fields: [uploaderId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  fileName   String
+  mimeType   String
+  size       Int
+  storageKey String   @unique
+  createdAt  DateTime @default(now())
+
+  @@index([ticketId])
+  @@index([messageId])
+  @@map("attachments")
+}
+
+/// Audit trail of changes made to a ticket (status, priority, assignee, ...).
+model TicketEvent {
+  id        String          @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId  String          @db.ObjectId
+  ticket    Ticket          @relation(fields: [ticketId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  actorId   String          @db.ObjectId
+  actor     User            @relation(fields: [actorId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  type      TicketEventType
+  fromValue String?
+  toValue   String?
+  createdAt DateTime        @default(now())
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_events")
+}
+
+/// Atomic sequences (currently only the ticket number).
+model Counter {
+  id   String @id @default(auto()) @map("_id") @db.ObjectId
+  name String @unique
+  seq  Int
+
+  @@map("counters")
+}

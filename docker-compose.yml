@@ -1,0 +1,50 @@
+# MongoDB for local development — a single-node replica set, which Prisma requires.
+#
+#   docker compose up -d                 # MongoDB only (run the app with `npm run dev`)
+#   docker compose --profile app up -d   # MongoDB + the production app image on :4000
+#
+services:
+  mongo:
+    image: mongo:7
+    command: ['--replSet', 'rs0', '--bind_ip_all', '--port', '27017']
+    ports:
+      - '27017:27017'
+    volumes:
+      - mongo-data:/data/db
+    # Initiates the replica set on first start, then reports health.
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'mongosh',
+          '--quiet',
+          '--eval',
+          "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] }).ok }",
+        ]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+  app:
+    profiles: ['app']
+    build: .
+    depends_on:
+      mongo:
+        condition: service_healthy
+    ports:
+      - '4000:4000'
+    environment:
+      DATABASE_URL: mongodb://mongo:27017/support_desk?directConnection=true
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET (32+ random characters)}
+      CORS_ORIGIN: http://localhost:4000
+      # Plain HTTP on localhost; set to true behind HTTPS.
+      COOKIE_SECURE: 'false'
+    volumes:
+      - uploads:/app/apps/server/uploads
+    restart: unless-stopped
+
+volumes:
+  mongo-data:
+  uploads:

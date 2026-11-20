@@ -1,0 +1,43 @@
+{
+  "name": "support-desk",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Full-stack customer support ticketing system — React, TypeScript, Tailwind CSS, Fastify, Prisma and MongoDB.",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev -w @support-desk/server\" \"npm run dev -w @support-desk/web\"",
+    "build": "npm run build -w @support-desk/server && npm run build -w @support-desk/web",
+    "start": "npm run start -w @support-desk/server",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present",
+    "db:local": "npm run db:local -w @support-desk/server",
+    "db:push": "npm run db:push -w @support-desk/server",
+    "db:seed": "npm run db:seed -w @support-desk/server",
+    "db:reset": "npm run db:seed -w @support-desk/server -- --reset",
+    "db:studio": "npm run db:studio -w @support-desk/server"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.0.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.0.0",
+    "prettier": "^3.6.2",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.73.0"
+  },
+  "overrides": {
+    "vite": "^7.3.8"
+  }
+}
