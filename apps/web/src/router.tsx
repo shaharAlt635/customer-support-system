@@ -18,6 +18,7 @@ export const router = createBrowserRouter([
       // --- Platform pages ---------------------------------------------------
       { path: '/', lazy: page(() => import('./pages/HomePage')) },
       { path: '/signup', lazy: page(() => import('./pages/CreateCompanyPage')) },
+      { path: '/find', lazy: page(() => import('./pages/FindCompanyPage')) },
       { path: '/verify-email', lazy: page(() => import('./pages/VerifyEmailPage')) },
       { path: '/reset-password', lazy: page(() => import('./pages/ResetPasswordPage')) },
       {

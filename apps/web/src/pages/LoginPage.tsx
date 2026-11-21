@@ -154,6 +154,13 @@ export default function LoginPage() {
         </div>
       </details>
 
+      <p className="mt-4 text-center text-sm text-slate-500">
+        Not your company?{' '}
+        <Link to="/find" className="font-medium text-brand-600 hover:text-brand-800">
+          Find your company
+        </Link>
+      </p>
+
       {SHOW_DEMO_ACCOUNTS && (
         <div className="mt-8 rounded-xl border border-dashed border-slate-300 p-4">
           <p className="text-xs font-medium text-slate-500">Demo accounts (from the seed script)</p>

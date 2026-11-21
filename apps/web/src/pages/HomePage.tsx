@@ -139,6 +139,12 @@ export default function HomePage() {
               Enter your company&apos;s address to sign in or open a ticket.
             </p>
             <GoToCompany />
+            <p className="mt-3 text-sm text-slate-500">
+              Don&apos;t know the address?{' '}
+              <Link to="/find" className="font-medium text-brand-600 hover:text-brand-800">
+                Find your company by email
+              </Link>
+            </p>
             {SHOW_DEMO && (
               <p className="mt-4 text-xs text-slate-500">
                 Demo companies:{' '}
