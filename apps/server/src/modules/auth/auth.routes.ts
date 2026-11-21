@@ -34,7 +34,10 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   const sendSession = (reply: FastifyReply, session: IssuedSession) =>
     sendSessionReply(reply, config, session);
 
-  app.post('/register', { config: strictLimit }, async (request, reply) => {
+  // Public forms that create accounts or send email also require the human check.
+  const guarded = { config: strictLimit, preHandler: app.requireCaptcha };
+
+  app.post('/register', guarded, async (request, reply) => {
     const input = parse(companyRegisterSchema, request.body);
     return reply.status(201).send(await app.services.auth.register(input));
   });
@@ -54,13 +57,13 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return reply.status(202).send({ ok: true });
   });
 
-  app.post('/forgot-password', { config: strictLimit }, async (request, reply) => {
+  app.post('/forgot-password', guarded, async (request, reply) => {
     await app.services.auth.requestPasswordReset(parse(emailRequestSchema, request.body));
     return reply.status(202).send({ ok: true });
   });
 
   /** Email a one-time sign-in link (works for guests, who have no password). */
-  app.post('/magic-link', { config: strictLimit }, async (request, reply) => {
+  app.post('/magic-link', guarded, async (request, reply) => {
     await app.services.auth.requestMagicLink(parse(emailRequestSchema, request.body));
     return reply.status(202).send({ ok: true });
   });

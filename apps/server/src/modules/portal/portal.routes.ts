@@ -20,7 +20,8 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   });
 
   /** A request from a visitor who isn't signed in (JSON or multipart with `files`). */
-  app.post('/:slug/tickets', { config: submissionLimit }, async (request, reply) => {
+  const guarded = { config: submissionLimit, preHandler: app.requireCaptcha };
+  app.post('/:slug/tickets', guarded, async (request, reply) => {
     const { slug } = parse(slugParamsSchema, request.params);
     const { storage } = app.services;
     const { body, files } = await readBodyWithFiles(request, storage, {
