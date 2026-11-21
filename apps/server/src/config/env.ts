@@ -45,8 +45,8 @@ const envSchema = z.object({
   /** Let visitors register customer accounts on a company's page. */
   ALLOW_REGISTRATION: booleanFlag,
 
-  /** Public URL of the web app, used to build links in emails. */
-  APP_URL: z.url().default('http://localhost:5173'),
+  /** Public URL of the web app, used to build links in emails (defaults to the Vercel URL). */
+  APP_URL: z.url().optional(),
   /** `smtp` sends real email; `dev` stores emails in the database for /dev/mailbox. */
   EMAIL_TRANSPORT: z.enum(['smtp', 'dev']).optional(),
   EMAIL_FROM: z.string().default('Support Desk <no-reply@example.com>'),
@@ -56,8 +56,10 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
 
+  /** `disk` (UPLOAD_DIR) or `database` (MongoDB, for hosts without a persistent disk). */
+  FILE_STORAGE: z.enum(['disk', 'database']).optional(),
   UPLOAD_DIR: z.string().default('./uploads'),
-  MAX_UPLOAD_SIZE_MB: z.coerce.number().positive().max(100).default(10),
+  MAX_UPLOAD_SIZE_MB: z.coerce.number().positive().max(100).optional(),
   MAX_FILES_PER_UPLOAD: z.coerce.number().int().min(1).max(20).default(5),
 
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
@@ -68,12 +70,28 @@ const envSchema = z.object({
 
   SERVE_WEB: booleanFlag,
   WEB_DIST_DIR: z.string().default('../web/dist'),
+
+  /**
+   * Public portfolio demo: keeps the dev mailbox on in production (so visitors can open
+   * every email) and lets the daily job reset the database to the demo data.
+   */
+  DEMO_MODE: booleanFlag,
+  /** Protects /api/cron/daily; Vercel sends it as `Authorization: Bearer <secret>`. */
+  CRON_SECRET: optionalString,
+
+  // Set by Vercel on its build machines and functions.
+  VERCEL: optionalString,
+  VERCEL_URL: optionalString,
+  VERCEL_PROJECT_PRODUCTION_URL: optionalString,
 });
 
 export type AppConfig = ReturnType<typeof loadConfig>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
-  const result = envSchema.safeParse(env);
+  // Vercel functions run in production unless told otherwise.
+  const result = envSchema.safeParse(
+    env.VERCEL ? { ...env, NODE_ENV: env.NODE_ENV || 'production' } : env,
+  );
   if (!result.success) {
     const issues = result.error.issues
       .map((issue) => `  - ${issue.path.join('.') || 'env'}: ${issue.message}`)
@@ -83,13 +101,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   const e = result.data;
   const isProduction = e.NODE_ENV === 'production';
-  const emailTransport = e.EMAIL_TRANSPORT ?? (isProduction ? 'smtp' : 'dev');
-  if (isProduction && emailTransport === 'dev') {
-    // The dev mailbox is unreachable in production, so emails would silently go nowhere.
+  const demoMode = e.DEMO_MODE ?? false;
+  const onVercel = Boolean(e.VERCEL);
+  const emailTransport = e.EMAIL_TRANSPORT ?? (isProduction && !demoMode ? 'smtp' : 'dev');
+  if (isProduction && emailTransport === 'dev' && !demoMode) {
+    // Outside demo mode the dev mailbox is unreachable in production, so emails would
+    // silently go nowhere.
     throw new Error(
-      'Invalid environment configuration:\n  - EMAIL_TRANSPORT: "dev" is not allowed in production',
+      'Invalid environment configuration:\n  - EMAIL_TRANSPORT: "dev" is not allowed in production (unless DEMO_MODE=true)',
     );
   }
+  const maxUploadMb = e.MAX_UPLOAD_SIZE_MB ?? (onVercel ? 4 : 10);
+  const vercelHost = e.VERCEL_PROJECT_PRODUCTION_URL ?? e.VERCEL_URL;
+  const appUrl = e.APP_URL ?? (vercelHost ? `https://${vercelHost}` : 'http://localhost:5173');
   if (emailTransport === 'smtp' && !e.SMTP_HOST) {
     throw new Error(
       'Invalid environment configuration:\n  - SMTP_HOST: required when EMAIL_TRANSPORT=smtp ' +
@@ -113,18 +137,23 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
         : null,
     isTest: e.NODE_ENV === 'test',
     COOKIE_SECURE: e.COOKIE_SECURE ?? isProduction,
-    TRUST_PROXY: e.TRUST_PROXY ?? false,
+    // Behind Vercel's proxy, the client IP (for rate limits) comes from X-Forwarded-For.
+    TRUST_PROXY: e.TRUST_PROXY ?? onVercel,
     ALLOW_REGISTRATION: e.ALLOW_REGISTRATION ?? true,
     ALLOW_COMPANY_SIGNUP: e.ALLOW_COMPANY_SIGNUP ?? true,
     EMAIL_TRANSPORT: emailTransport,
     SMTP_SECURE: e.SMTP_SECURE ?? e.SMTP_PORT === 465,
-    APP_URL: e.APP_URL.replace(/\/$/, ''),
-    /** The dev mailbox API is never exposed in production. */
-    devMailboxEnabled: emailTransport === 'dev' && !isProduction,
+    APP_URL: appUrl.replace(/\/$/, ''),
+    DEMO_MODE: demoMode,
+    /** The dev mailbox API is only exposed in production for a public demo. */
+    devMailboxEnabled: emailTransport === 'dev' && (!isProduction || demoMode),
+    // Vercel functions have no persistent disk and accept request bodies up to 4.5 MB.
+    FILE_STORAGE: e.FILE_STORAGE ?? (onVercel ? 'database' : 'disk'),
+    MAX_UPLOAD_SIZE_MB: maxUploadMb,
     SERVE_WEB: e.SERVE_WEB ?? false,
     corsOrigins: e.CORS_ORIGIN.split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
-    maxUploadBytes: Math.round(e.MAX_UPLOAD_SIZE_MB * 1024 * 1024),
+    maxUploadBytes: Math.round(maxUploadMb * 1024 * 1024),
   };
 }
