@@ -28,6 +28,7 @@ import authPlugin from './plugins/auth';
 import captchaPlugin, { TURNSTILE_ORIGIN } from './plugins/captcha';
 import { registerErrorHandlers } from './plugins/error-handler';
 import { createServices } from './services';
+import { DatabaseFileStorage } from './storage/database-storage';
 import { type FileStorage, LocalFileStorage } from './storage/file-storage';
 
 export interface BuildAppOptions {
@@ -55,7 +56,11 @@ function loggerOptions(config: AppConfig): FastifyServerOptions['logger'] {
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
   const prisma = options.prisma ?? new PrismaClient();
-  const storage = options.storage ?? new LocalFileStorage(path.resolve(config.UPLOAD_DIR));
+  const storage =
+    options.storage ??
+    (config.FILE_STORAGE === 'database'
+      ? new DatabaseFileStorage(prisma)
+      : new LocalFileStorage(path.resolve(config.UPLOAD_DIR)));
 
   const webRoot = path.resolve(config.WEB_DIST_DIR);
   const serveWeb = config.SERVE_WEB && existsSync(path.join(webRoot, 'index.html'));

@@ -383,3 +383,15 @@ model DevEmail {
   // Expired by a TTL index created at startup (see src/lib/db-maintenance.ts).
   @@map("dev_emails")
 }
+
+/// Attachment contents when FILE_STORAGE=database — for hosts without a persistent disk
+/// (e.g. Vercel). Request bodies there are capped at 4.5 MB, well under MongoDB's 16 MB.
+model StoredFile {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  key       String   @unique
+  data      Bytes
+  size      Int
+  createdAt DateTime @default(now())
+
+  @@map("stored_files")
+}
