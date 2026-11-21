@@ -6,6 +6,7 @@ import { Link, useLocation } from 'react-router';
 import { toast } from 'sonner';
 import { ApiError, getErrorMessage } from '../api/client';
 import { authApi } from '../api/endpoints';
+import { usePublicConfig } from '../api/queries';
 import { useAuth } from '../auth/auth-context';
 import { useCompany, useCompanyPath } from '../company/company-context';
 import { Button } from '../components/ui/Button';
@@ -34,6 +35,8 @@ export default function LoginPage() {
   const [formError, setFormError] = useState<string>();
   const [unverifiedEmail, setUnverifiedEmail] = useState<string>();
   useDocumentTitle(`Sign in to ${company.name}`);
+  const { data: config } = usePublicConfig();
+  const showDemoAccounts = SHOW_DEMO_ACCOUNTS || config?.demo === true;
 
   const {
     register,
@@ -161,7 +164,7 @@ export default function LoginPage() {
         </Link>
       </p>
 
-      {SHOW_DEMO_ACCOUNTS && (
+      {showDemoAccounts && (
         <div className="mt-8 rounded-xl border border-dashed border-slate-300 p-4">
           <p className="text-xs font-medium text-slate-500">Demo accounts (from the seed script)</p>
           <div className="mt-2 grid grid-cols-3 gap-2">

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { ApiError } from '../api/client';
 import { type DevEmail, devApi } from '../api/endpoints';
+import { usePublicConfig } from '../api/queries';
 import { Button } from '../components/ui/Button';
 import { Card } from '../components/ui/Card';
 import { SectionSpinner } from '../components/ui/Spinner';
@@ -35,6 +36,8 @@ export default function DevMailboxPage() {
     },
   });
 
+  // On a public demo the mailbox is shared by every visitor, so nobody gets to empty it.
+  const demo = usePublicConfig().data?.demo === true;
   const emails = data ?? [];
   const selected = emails.find((email) => email.id === selectedId) ?? emails[0];
 
@@ -46,19 +49,30 @@ export default function DevMailboxPage() {
             ← Support Desk
           </Link>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">Dev mailbox</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Emails the API would send. Only available in development (EMAIL_TRANSPORT=dev); kept for
-            7 days.
-          </p>
+          {demo ? (
+            <p className="mt-1 max-w-2xl text-sm text-slate-500">
+              This public demo doesn&apos;t send real email: every email it would send appears here,
+              for everyone.{' '}
+              <strong className="text-slate-700">Don&apos;t use a real email address.</strong> The
+              demo data is reset daily.
+            </p>
+          ) : (
+            <p className="mt-1 text-sm text-slate-500">
+              Emails the API would send. Only available in development (EMAIL_TRANSPORT=dev); kept
+              for 7 days.
+            </p>
+          )}
         </div>
-        <Button
-          variant="secondary"
-          onClick={() => clear.mutate()}
-          loading={clear.isPending}
-          disabled={!emails.length}
-        >
-          <Trash2 className="size-4" /> Clear
-        </Button>
+        {!demo && (
+          <Button
+            variant="secondary"
+            onClick={() => clear.mutate()}
+            loading={clear.isPending}
+            disabled={!emails.length}
+          >
+            <Trash2 className="size-4" /> Clear
+          </Button>
+        )}
       </div>
 
       <Card className="overflow-hidden">

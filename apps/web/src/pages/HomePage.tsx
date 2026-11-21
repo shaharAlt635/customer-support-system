@@ -145,7 +145,7 @@ export default function HomePage() {
                 Find your company by email
               </Link>
             </p>
-            {SHOW_DEMO && (
+            {(SHOW_DEMO || config?.demo) && (
               <p className="mt-4 text-xs text-slate-500">
                 Demo companies:{' '}
                 <Link to="/acme/login" className="font-medium text-brand-600 hover:underline">
