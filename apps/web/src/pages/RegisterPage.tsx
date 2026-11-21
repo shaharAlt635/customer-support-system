@@ -10,6 +10,7 @@ import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
 import { AuthLayout } from '../features/auth/AuthLayout';
 import { CheckEmailNotice } from '../features/auth/CheckEmailNotice';
+import { useCaptcha } from '../features/captcha/useCaptcha';
 import { PasswordInput } from '../features/auth/PasswordInput';
 import { handleFormError } from '../lib/form-errors';
 import { useDocumentTitle } from '../lib/hooks';
@@ -20,6 +21,7 @@ export default function RegisterPage() {
   const companyPath = useCompanyPath();
   const { register: signUp } = useAuth();
   const [pendingEmail, setPendingEmail] = useState<string>();
+  const captcha = useCaptcha();
   useDocumentTitle(`Create a ${company.name} account`);
 
   const {
@@ -37,10 +39,11 @@ export default function RegisterPage() {
 
   const onSubmit = async (values: RegisterInput) => {
     try {
-      const result = await signUp(values);
+      const result = await signUp(values, captcha.token);
       setPendingEmail(result.email);
     } catch (error) {
       handleFormError(error, setError, ['name', 'email', 'password']);
+      captcha.reset();
     }
   };
 
@@ -99,7 +102,14 @@ export default function RegisterPage() {
             {...register('password')}
           />
         </Field>
-        <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+        {captcha.widget}
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          loading={isSubmitting}
+          disabled={!captcha.ready}
+        >
           Create account
         </Button>
       </form>

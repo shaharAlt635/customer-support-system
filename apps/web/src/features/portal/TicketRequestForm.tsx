@@ -18,6 +18,7 @@ import { FilePicker } from '../../components/ui/FilePicker';
 import { Input, Select, Textarea } from '../../components/ui/Input';
 import { textColorOn } from '../../lib/color';
 import { handleFormError } from '../../lib/form-errors';
+import { useCaptcha } from '../captcha/useCaptcha';
 
 const baseSchema = createTicketSchema.extend({
   priority: z.enum(TICKET_PRIORITIES),
@@ -83,6 +84,9 @@ export function TicketRequestForm({
     },
   });
   const isAnonymous = useWatch({ control, name: 'isAnonymous' });
+  // Only visitors who aren't signed in go through the human check.
+  const captcha = useCaptcha();
+  const guestCaptcha = mode === 'guest';
 
   const onSubmit = async (values: FormValues) => {
     const ticket = {
@@ -103,6 +107,7 @@ export function TicketRequestForm({
             website: values.website || undefined,
           },
           files,
+          captcha.token,
         );
         onGuestSubmitted?.(result.email);
       } else {
@@ -118,6 +123,7 @@ export function TicketRequestForm({
         'name',
         'email',
       ]);
+      if (guestCaptcha) captcha.reset();
     }
   };
 
@@ -231,10 +237,13 @@ export function TicketRequestForm({
         </label>
       </div>
 
+      {guestCaptcha && captcha.widget}
+
       <Button
         type="submit"
         size="lg"
         loading={isSubmitting}
+        disabled={guestCaptcha && !captcha.ready}
         className="w-full sm:w-auto"
         style={{ backgroundColor: company.brandColor, color: textColorOn(company.brandColor) }}
       >

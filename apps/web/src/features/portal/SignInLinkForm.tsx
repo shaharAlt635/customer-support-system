@@ -8,6 +8,7 @@ import { authApi } from '../../api/endpoints';
 import { usePublicConfig } from '../../api/queries';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import { useCaptcha } from '../captcha/useCaptcha';
 
 /** "Email me a sign-in link" — the way back in for guests, who have no password. */
 export function SignInLinkForm({
@@ -22,6 +23,8 @@ export function SignInLinkForm({
   const [error, setError] = useState<string>();
   const [sentTo, setSentTo] = useState<string>();
   const [sending, setSending] = useState(false);
+  // Sits in narrow side panels, so use Cloudflare's compact widget if a click is needed.
+  const captcha = useCaptcha({ compact: true });
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -32,10 +35,11 @@ export function SignInLinkForm({
     }
     setSending(true);
     try {
-      await authApi.magicLink({ companySlug, email: parsed.data });
+      await authApi.magicLink({ companySlug, email: parsed.data }, captcha.token);
       setSentTo(parsed.data);
     } catch (err) {
       toast.error(getErrorMessage(err));
+      captcha.reset();
     } finally {
       setSending(false);
     }
@@ -71,7 +75,14 @@ export function SignInLinkForm({
         invalid={Boolean(error)}
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
-      <Button type="submit" variant="secondary" className="w-full" loading={sending}>
+      {captcha.widget}
+      <Button
+        type="submit"
+        variant="secondary"
+        className="w-full"
+        loading={sending}
+        disabled={!captcha.ready}
+      >
         Email me a sign-in link
       </Button>
     </form>

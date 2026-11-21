@@ -12,6 +12,7 @@ import { Button } from '../components/ui/Button';
 import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
 import { AuthLayout } from '../features/auth/AuthLayout';
+import { useCaptcha } from '../features/captcha/useCaptcha';
 import { handleFormError } from '../lib/form-errors';
 import { useDocumentTitle } from '../lib/hooks';
 
@@ -23,6 +24,7 @@ export default function ForgotPasswordPage() {
   const companyPath = useCompanyPath();
   const { data: config } = usePublicConfig();
   const [sentTo, setSentTo] = useState<string>();
+  const captcha = useCaptcha();
   useDocumentTitle('Reset your password');
 
   const {
@@ -34,10 +36,11 @@ export default function ForgotPasswordPage() {
 
   const onSubmit = async ({ email }: FormValues) => {
     try {
-      await authApi.forgotPassword({ companySlug: company.slug, email });
+      await authApi.forgotPassword({ companySlug: company.slug, email }, captcha.token);
       setSentTo(email);
     } catch (error) {
       handleFormError(error, setError, ['email']);
+      captcha.reset();
     }
   };
 
@@ -81,7 +84,14 @@ export default function ForgotPasswordPage() {
               {...register('email')}
             />
           </Field>
-          <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+          {captcha.widget}
+          <Button
+            type="submit"
+            size="lg"
+            className="w-full"
+            loading={isSubmitting}
+            disabled={!captcha.ready}
+          >
             Send reset link
           </Button>
         </form>

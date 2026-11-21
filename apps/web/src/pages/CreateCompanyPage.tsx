@@ -13,6 +13,7 @@ import { Input } from '../components/ui/Input';
 import { AuthLayout } from '../features/auth/AuthLayout';
 import { CheckEmailNotice } from '../features/auth/CheckEmailNotice';
 import { PasswordInput } from '../features/auth/PasswordInput';
+import { useCaptcha } from '../features/captcha/useCaptcha';
 import { handleFormError } from '../lib/form-errors';
 import { useDebouncedValue, useDocumentTitle } from '../lib/hooks';
 
@@ -61,6 +62,7 @@ export default function CreateCompanyPage() {
   const { data: config } = usePublicConfig();
   const [slugEdited, setSlugEdited] = useState(false);
   const [pending, setPending] = useState<{ email: string; slug: string }>();
+  const captcha = useCaptcha();
 
   const {
     register,
@@ -84,17 +86,18 @@ export default function CreateCompanyPage() {
 
   const onSubmit = async (values: CreateCompanyInput) => {
     try {
-      const result = await companiesApi.create(values);
+      const result = await companiesApi.create(values, captcha.token);
       setPending({ email: result.email, slug: result.company.slug });
     } catch (error) {
       handleFormError(error, setError, ['companyName', 'slug', 'name', 'email', 'password']);
+      captcha.reset();
     }
   };
 
   const signInHint = (
     <>
       Already have a company?{' '}
-      <Link to="/" className="font-medium text-brand-600 hover:text-brand-800">
+      <Link to="/find" className="font-medium text-brand-600 hover:text-brand-800">
         Find its sign-in page
       </Link>
     </>
@@ -203,7 +206,14 @@ export default function CreateCompanyPage() {
           </div>
         </div>
 
-        <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
+        {captcha.widget}
+        <Button
+          type="submit"
+          size="lg"
+          className="w-full"
+          loading={isSubmitting}
+          disabled={!captcha.ready}
+        >
           Create company
         </Button>
       </form>
