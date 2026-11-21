@@ -35,6 +35,7 @@ It's multi-tenant: anyone can create a **company**, which gets its own branded t
 - Self-service company sign-up: pick a name and address (`/acme`, checked live for availability) and become the company's **owner**
 - **Accounts belong to a company.** The same email can have separate accounts (and passwords) at different companies — e.g. an agent at Acme and a customer at Globex — but only one account per company
 - A browser can stay signed in to several companies at once (one session cookie per company)
+- **Find my company:** forgot your company's address? Enter your email at `/find` and get a list of every company where you have an account, with a sign-in link for each — sent by email only, so the page never reveals who has an account
 - **Email confirmation** for every new account, **forgot / reset password** by email, and resend links with a cooldown
 - Real email over SMTP in production; in development, emails land in a built-in **dev mailbox** (`/dev/mailbox`) so every flow works without an email provider
 - Strict tenant isolation: tickets, users, categories, statistics and files never cross company boundaries
@@ -46,7 +47,7 @@ It's multi-tenant: anyone can create a **company**, which gets its own branded t
 - **Guests** enter their name and email; the request reaches the team only after they click the confirmation link (unconfirmed requests and their files are deleted after 24 hours). Confirming signs them in to a password-less guest account, where they can follow the ticket and later set a password
 - **Anonymous requests** still need a confirmed email so the requester can follow up, but the team only ever sees "Anonymous" — the name and email are removed on the server, in every ticket, message, notification and search result
 - Requesters get an email when the team replies, with a one-click sign-in link straight to the ticket; "Email me a sign-in link" works for anyone without a password
-- Abuse controls: rate limits, a honeypot field and at most 5 unconfirmed requests per email
+- Abuse controls: rate limits, a honeypot field, at most 5 unconfirmed requests per email and an optional **human check** ([Cloudflare Turnstile](https://www.cloudflare.com/products/turnstile/)) on every public form
 
 **Tickets**
 
@@ -117,7 +118,7 @@ It's multi-tenant: anyone can create a **company**, which gets its own branded t
 │   │   │   ├── config/         environment parsing & validation (Zod)
 │   │   │   ├── email/          Mailer interface (SMTP + dev mailbox) and email templates
 │   │   │   ├── lib/            errors, validation, password hashing, tokens, multipart, search
-│   │   │   ├── plugins/        auth (JWT + permission guards), error handler
+│   │   │   ├── plugins/        auth (JWT + permission guards), captcha (human check), error handler
 │   │   │   ├── modules/        auth, companies, portal, team, groups, customers, tickets, attachments,
 │   │   │   │                   categories, notifications, stats, system, dev
 │   │   │   │   └── <module>/   *.routes.ts (HTTP)  →  *.service.ts (business rules)  →  Prisma
@@ -132,7 +133,7 @@ It's multi-tenant: anyone can create a **company**, which gets its own branded t
 │           ├── auth/           AuthProvider (one session per company), route guards
 │           ├── company/        CompanyRoot (/:slug routes), company context & path helper
 │           ├── components/     ui/ (Button, Input, Modal, …) and layout/
-│           ├── features/       tickets, portal, dashboard, auth building blocks
+│           ├── features/       tickets, portal, captcha, dashboard, auth building blocks
 │           └── pages/          route-level pages (code-split)
 └── packages/
     └── shared/                 constants, permissions, Zod schemas, DTO types
@@ -223,6 +224,8 @@ The API reads `apps/server/.env` (see [`apps/server/.env.example`](apps/server/.
 | `MAX_FILES_PER_UPLOAD`     | `5`                                   | Files per ticket/reply                                                             |
 | `RATE_LIMIT_MAX`           | `300`                                 | Requests per minute per IP                                                         |
 | `AUTH_RATE_LIMIT_MAX`      | `10`                                  | Sign-in/registration attempts per minute per IP                                    |
+| `TURNSTILE_SITE_KEY`       | —                                     | Cloudflare Turnstile site key; set both keys to turn on the human check            |
+| `TURNSTILE_SECRET_KEY`     | —                                     | Cloudflare Turnstile secret key (server-side verification)                         |
 | `SERVE_WEB`                | `false`                               | Serve the built React app from the API (single-port production deploy)             |
 | `LOG_LEVEL`                | `info`                                | Pino log level                                                                     |
 
@@ -277,25 +280,26 @@ The default groups can be edited or deleted, and new groups created. The catalog
 
 ## API reference
 
-All endpoints are under `/api`. Authenticated requests send `Authorization: Bearer <accessToken>`; the token is tied to one company, and everything it can reach is scoped to that company. Auth endpoints that start a session take a `companySlug`. Errors always have the shape `{ "error": { "code", "message", "details?" } }`, where `details` lists field-level validation issues.
+All endpoints are under `/api`. Authenticated requests send `Authorization: Bearer <accessToken>`; the token is tied to one company, and everything it can reach is scoped to that company. Auth endpoints that start a session take a `companySlug`. Errors always have the shape `{ "error": { "code", "message", "details?" } }`, where `details` lists field-level validation issues. When the human check is on, the endpoints marked † also need the widget's token in an `X-Captcha-Token` header.
 
 | Method & path                                                       | Auth             | Description                                                                   |
 | ------------------------------------------------------------------- | ---------------- | ----------------------------------------------------------------------------- |
 | `GET /health`                                                       | —                | Liveness + database check                                                     |
 | `GET /config`                                                       | —                | Public settings (sign-up toggles, dev mailbox, upload limits)                 |
-| `POST /companies`                                                   | —                | Create a company + owner account (email confirmation required)                |
+| `POST /companies` †                                                 | —                | Create a company + owner account (email confirmation required)                |
+| `POST /companies/find` †                                            | —                | Email the companies where `email` has an account (always `202`)               |
 | `GET /companies/check-slug?slug=`                                   | —                | Is a company address available?                                               |
 | `GET /companies/:slug`                                              | —                | Public company info and ticket-page settings                                  |
 | `GET /portal/:slug/categories`                                      | —                | Active categories for the public request form                                 |
-| `POST /portal/:slug/tickets`                                        | —                | Guest/anonymous request (JSON or multipart); emails a confirmation (`202`)    |
+| `POST /portal/:slug/tickets` †                                      | —                | Guest/anonymous request (JSON or multipart); emails a confirmation (`202`)    |
 | `POST /portal/confirm`                                              | —                | Confirm a request from the emailed `token`: creates the ticket, signs in      |
-| `POST /auth/register`                                               | —                | Create a customer account at a company (`companySlug`); emails a confirmation |
+| `POST /auth/register` †                                             | —                | Create a customer account at a company (`companySlug`); emails a confirmation |
 | `POST /auth/verify-email`                                           | —                | Confirm an email from the emailed `token` and start a session                 |
 | `POST /auth/resend-verification`                                    | —                | Email a new confirmation link (always `202`)                                  |
 | `POST /auth/login`                                                  | —                | Start a session; returns `{ user, company, accessToken }` + refresh cookie    |
-| `POST /auth/forgot-password`                                        | —                | Email a password-reset link (always `202`)                                    |
+| `POST /auth/forgot-password` †                                      | —                | Email a password-reset link (always `202`)                                    |
 | `POST /auth/reset-password`                                         | —                | Set a new password from the emailed `token`; signs out all sessions           |
-| `POST /auth/magic-link`                                             | —                | Email a one-time sign-in link (always `202`)                                  |
+| `POST /auth/magic-link` †                                           | —                | Email a one-time sign-in link (always `202`)                                  |
 | `POST /auth/magic-login`                                            | —                | Start a session from the emailed sign-in `token`                              |
 | `POST /auth/set-password`                                           | user             | Add a password to a password-less (guest) account                             |
 | `POST /auth/refresh`                                                | cookie           | Rotate the company's refresh cookie and return a new access token             |
@@ -336,6 +340,7 @@ All endpoints are under `/api`. Authenticated requests send `Authorization: Bear
 - **Anonymity:** anonymous tickets are masked in the serializers, so the requester's name and email never leave the server for staff; they are also excluded from customer search and filters.
 - **Immediate revocation:** each request re-checks that the account is still active, so deactivating a user or changing their role takes effect at once.
 - **No account enumeration:** unknown emails and wrong passwords return the same response in the same time.
+- **Human check (optional):** with Turnstile keys set, company sign-up, registration, public requests, "find my company", forgot password and sign-in links require a token that the API verifies with Cloudflare before reading the body — so bots are turned away before any upload reaches the disk. If Cloudflare can't be reached, the API refuses the request (`503`) rather than letting it through. Signing in is never slowed down.
 - **Validation everywhere:** every body, query and route parameter is validated with Zod; search input is regex-escaped before reaching MongoDB.
 - **Uploads:** streamed to disk (never buffered in memory), limited by size and count, allowed by extension with the MIME type derived server-side, stored under random names outside the web root, and always served as downloads with `X-Content-Type-Options: nosniff`. Files are cleaned up if the request fails.
 - **HTTP hardening:** Helmet (CSP, HSTS behind HTTPS, frame protection), strict CORS allow-list, global and per-route rate limits, 1 MB JSON body limit, and generic 500 responses that never leak stack traces. Authorization headers and cookies are redacted from logs.
@@ -346,7 +351,7 @@ All endpoints are under `/api`. Authenticated requests send `Authorization: Bear
 npm test
 ```
 
-The API is covered by **92 integration tests** that start a real MongoDB replica set in memory (via `mongodb-memory-server`), push the Prisma schema, and exercise the app through `fastify.inject()` — no mocks. They cover company sign-up, email confirmation and password reset (reading the actual emails), guest and anonymous requests (confirmation, expiry, company settings, anonymity masking, reply emails, sign-in links, account-claim protection), per-company accounts and cookies, tenant isolation, permission groups and every ticket permission, the invitation flow (existing and new accounts, decline, expiry, resend, cancel), team and customer management, notifications, registration and login, refresh-token rotation and reuse detection, role-based access, internal-note privacy (including attachment downloads), status transitions and timestamps, assignment rules, search/filter/sort/pagination, upload limits and cleanup, statistics, and admin safeguards. The first run downloads a MongoDB binary (cached afterwards).
+The API is covered by **112 integration tests** that start a real MongoDB replica set in memory (via `mongodb-memory-server`), push the Prisma schema, and exercise the app through `fastify.inject()` — no mocks. They cover company sign-up, email confirmation and password reset (reading the actual emails), guest and anonymous requests (confirmation, expiry, company settings, anonymity masking, reply emails, sign-in links, account-claim protection), "find my company", the human check on every public form (with Cloudflare's verification stubbed), per-company accounts and cookies, tenant isolation, permission groups and every ticket permission, the invitation flow (existing and new accounts, decline, expiry, resend, cancel), team and customer management, notifications, registration and login, refresh-token rotation and reuse detection, role-based access, internal-note privacy (including attachment downloads), status transitions and timestamps, assignment rules, search/filter/sort/pagination, upload limits and cleanup, statistics, and admin safeguards. The first run downloads a MongoDB binary (cached afterwards).
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs formatting, linting, type-checking, tests and the production build on every push and pull request.
 
@@ -396,7 +401,6 @@ The web app can also be deployed to any static host: build it with `VITE_API_URL
 
 ## Roadmap
 
-- "Find my company" by email, and CAPTCHA-style spam protection for public forms
 - Email notifications for agents (new tickets, assignments)
 - Real-time updates over WebSockets instead of polling
 - S3-compatible attachment storage driver
