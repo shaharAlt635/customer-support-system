@@ -18,6 +18,7 @@ export const systemRoutes: FastifyPluginAsync = async (app) => {
     allowRegistration: app.config.ALLOW_REGISTRATION,
     allowCompanySignup: app.config.ALLOW_COMPANY_SIGNUP,
     devMailbox: app.config.devMailboxEnabled,
+    captchaSiteKey: app.config.captcha?.siteKey ?? null,
     uploads: {
       maxFileSizeBytes: app.config.maxUploadBytes,
       maxFiles: app.config.MAX_FILES_PER_UPLOAD,

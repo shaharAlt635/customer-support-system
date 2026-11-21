@@ -14,5 +14,8 @@ Object.assign(process.env, {
   MAX_FILES_PER_UPLOAD: '3',
   ALLOW_REGISTRATION: 'true',
   SERVE_WEB: 'false',
+  // Keep a developer's .env from switching the human check on for every test.
+  TURNSTILE_SITE_KEY: '',
+  TURNSTILE_SECRET_KEY: '',
   UPLOAD_DIR: path.join(os.tmpdir(), `support-desk-test-uploads-${process.pid}`),
 });

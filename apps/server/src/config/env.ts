@@ -13,6 +13,13 @@ const booleanFlag = z
   .optional()
   .transform((value) => (value === undefined ? undefined : value === 'true' || value === '1'));
 
+/** Unset and empty (`KEY=` in .env) both mean "not configured". */
+const optionalString = z
+  .string()
+  .trim()
+  .optional()
+  .transform((value) => value || undefined);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('0.0.0.0'),
@@ -55,6 +62,9 @@ const envSchema = z.object({
 
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  /** Cloudflare Turnstile keys; when both are set, public forms require the human check. */
+  TURNSTILE_SITE_KEY: optionalString,
+  TURNSTILE_SECRET_KEY: optionalString,
 
   SERVE_WEB: booleanFlag,
   WEB_DIST_DIR: z.string().default('../web/dist'),
@@ -87,9 +97,20 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     );
   }
 
+  if (Boolean(e.TURNSTILE_SITE_KEY) !== Boolean(e.TURNSTILE_SECRET_KEY)) {
+    throw new Error(
+      'Invalid environment configuration:\n  - TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY: set both to enable the human check, or neither',
+    );
+  }
+
   return {
     ...e,
     isProduction,
+    /** Human check on public forms (Cloudflare Turnstile), or null when disabled. */
+    captcha:
+      e.TURNSTILE_SITE_KEY && e.TURNSTILE_SECRET_KEY
+        ? { siteKey: e.TURNSTILE_SITE_KEY, secretKey: e.TURNSTILE_SECRET_KEY }
+        : null,
     isTest: e.NODE_ENV === 'test',
     COOKIE_SECURE: e.COOKIE_SECURE ?? isProduction,
     TRUST_PROXY: e.TRUST_PROXY ?? false,

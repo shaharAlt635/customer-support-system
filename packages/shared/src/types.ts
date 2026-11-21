@@ -230,6 +230,8 @@ export interface PublicConfigDTO {
   allowRegistration: boolean;
   allowCompanySignup: boolean;
   devMailbox: boolean;
+  /** Cloudflare Turnstile site key; when set, public forms must pass the human check. */
+  captchaSiteKey: string | null;
   uploads: {
     maxFileSizeBytes: number;
     maxFiles: number;

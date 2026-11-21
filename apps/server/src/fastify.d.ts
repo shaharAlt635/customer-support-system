@@ -23,5 +23,7 @@ declare module 'fastify' {
     authorize: (...permissions: Permission[]) => (request: FastifyRequest) => Promise<void>;
     /** preHandler factory: authenticates, then requires at least one listed permission. */
     authorizeAny: (...permissions: Permission[]) => (request: FastifyRequest) => Promise<void>;
+    /** preHandler: requires a valid human-check token when Turnstile is configured. */
+    requireCaptcha: (request: FastifyRequest) => Promise<void>;
   }
 }

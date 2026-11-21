@@ -25,6 +25,7 @@ import { systemRoutes } from './modules/system/system.routes';
 import { ticketRoutes } from './modules/tickets/tickets.routes';
 import { meRoutes, teamRoutes } from './modules/team/team.routes';
 import authPlugin from './plugins/auth';
+import captchaPlugin, { TURNSTILE_ORIGIN } from './plugins/captcha';
 import { registerErrorHandlers } from './plugins/error-handler';
 import { createServices } from './services';
 import { type FileStorage, LocalFileStorage } from './storage/file-storage';
@@ -72,10 +73,14 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   });
 
   // --- Security & parsing -------------------------------------------------
+  // The Turnstile widget loads a script and an iframe from Cloudflare.
+  const captchaSources = config.captcha ? [TURNSTILE_ORIGIN] : [];
   await app.register(helmet, {
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", ...captchaSources],
+        frameSrc: ["'self'", ...captchaSources],
         imgSrc: ["'self'", 'data:', 'blob:'],
         styleSrc: ["'self'", "'unsafe-inline'"],
         fontSrc: ["'self'", 'data:'],
@@ -112,6 +117,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     },
   });
   await app.register(authPlugin);
+  await app.register(captchaPlugin);
 
   app.decorate(
     'services',
