@@ -5,3 +5,5 @@ package-lock.json
 apps/server/uploads
 apps/server/.mongo-data
 .claude
+.vercel
+apps/server/dist-vercel

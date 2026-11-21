@@ -6,7 +6,14 @@ import tseslint from 'typescript-eslint';
 
 export default defineConfig(
   {
-    ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', 'apps/server/uploads/**'],
+    ignores: [
+      '**/dist/**',
+      '**/dist-vercel/**',
+      '.vercel/**',
+      '**/node_modules/**',
+      '**/coverage/**',
+      'apps/server/uploads/**',
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

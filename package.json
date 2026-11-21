@@ -13,6 +13,7 @@
   },
   "scripts": {
     "setup": "node scripts/setup.mjs",
+    "build:vercel": "node scripts/vercel-build.mjs",
     "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev -w @support-desk/server\" \"npm run dev -w @support-desk/web\"",
     "build": "npm run build -w @support-desk/server && npm run build -w @support-desk/web",
     "start": "npm run start -w @support-desk/server",
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@vercel/nft": "1.11.0",
     "concurrently": "^9.2.1",
     "eslint": "^10.0.0",
     "eslint-plugin-react-hooks": "^7.1.1",
