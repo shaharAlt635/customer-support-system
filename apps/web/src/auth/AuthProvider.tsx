@@ -73,7 +73,7 @@ export function AuthProvider({
       status,
       user,
       login: async (input) => startSession(await authApi.login({ ...input, companySlug })),
-      register: (input) => authApi.register({ ...input, companySlug }),
+      register: (input, captchaToken) => authApi.register({ ...input, companySlug }, captchaToken),
       signedOut,
       logout: async () => {
         await authApi.logout(companySlug).catch(() => undefined);

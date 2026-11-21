@@ -72,19 +72,20 @@ function withFiles(fields: Record<string, unknown>, files: File[]): unknown {
 }
 
 export const authApi = {
-  magicLink: (input: EmailRequestInput) =>
-    request<void>('/auth/magic-link', { method: 'POST', body: input, auth: false }),
+  magicLink: (input: EmailRequestInput, captchaToken?: string) =>
+    request<void>('/auth/magic-link', { method: 'POST', body: input, auth: false, captchaToken }),
   magicLogin: (token: string) =>
     request<AuthResponse>('/auth/magic-login', { method: 'POST', body: { token }, auth: false }),
   setPassword: (password: string) =>
     request<void>('/auth/set-password', { method: 'POST', body: { password } }),
   login: (input: CompanyLoginInput) =>
     request<AuthResponse>('/auth/login', { method: 'POST', body: input, auth: false }),
-  register: (input: CompanyRegisterInput) =>
+  register: (input: CompanyRegisterInput, captchaToken?: string) =>
     request<VerificationPendingDTO>('/auth/register', {
       method: 'POST',
       body: input,
       auth: false,
+      captchaToken,
     }),
   verifyEmail: (token: string) =>
     request<AuthResponse>('/auth/verify-email', {
@@ -94,8 +95,13 @@ export const authApi = {
     }),
   resendVerification: (input: EmailRequestInput) =>
     request<void>('/auth/resend-verification', { method: 'POST', body: input, auth: false }),
-  forgotPassword: (input: EmailRequestInput) =>
-    request<void>('/auth/forgot-password', { method: 'POST', body: input, auth: false }),
+  forgotPassword: (input: EmailRequestInput, captchaToken?: string) =>
+    request<void>('/auth/forgot-password', {
+      method: 'POST',
+      body: input,
+      auth: false,
+      captchaToken,
+    }),
   resetPassword: (input: ResetPasswordInput) =>
     request<{ company: CompanySummaryDTO }>('/auth/reset-password', {
       method: 'POST',
@@ -117,11 +123,12 @@ export const portalApi = {
     request<{ data: CategorySummaryDTO[] }>(`/portal/${encodeURIComponent(slug)}/categories`, {
       auth: false,
     }),
-  submit: (slug: string, input: GuestTicketInput, files: File[]) =>
+  submit: (slug: string, input: GuestTicketInput, files: File[], captchaToken?: string) =>
     request<SubmissionPendingDTO>(`/portal/${encodeURIComponent(slug)}/tickets`, {
       method: 'POST',
       body: withFiles({ ...input }, files),
       auth: false,
+      captchaToken,
     }),
   confirm: (token: string) =>
     request<AuthResponse & { ticketId: string }>('/portal/confirm', {
@@ -142,8 +149,21 @@ export interface SlugCheck {
 }
 
 export const companiesApi = {
-  create: (input: CreateCompanyInput) =>
-    request<VerificationPendingDTO>('/companies', { method: 'POST', body: input, auth: false }),
+  create: (input: CreateCompanyInput, captchaToken?: string) =>
+    request<VerificationPendingDTO>('/companies', {
+      method: 'POST',
+      body: input,
+      auth: false,
+      captchaToken,
+    }),
+  /** Email the list of companies where this address has an account (always `202`). */
+  find: (email: string, captchaToken?: string) =>
+    request<void>('/companies/find', {
+      method: 'POST',
+      body: { email },
+      auth: false,
+      captchaToken,
+    }),
   checkSlug: (slug: string, signal?: AbortSignal) =>
     request<SlugCheck>('/companies/check-slug', { query: { slug }, auth: false, signal }),
   getPublic: (slug: string) =>

@@ -105,6 +105,8 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Set to false for endpoints where a 401 means "bad credentials", not "expired token". */
   auth?: boolean;
+  /** Token from the human-check widget, for public forms that require it. */
+  captchaToken?: string;
 }
 
 function buildUrl(path: string, query?: Record<string, QueryValue>): string {
@@ -140,6 +142,7 @@ async function send(path: string, options: RequestOptions, canRetry = true): Pro
     headers['Content-Type'] = 'application/json';
   }
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  if (options.captchaToken) headers['X-Captcha-Token'] = options.captchaToken;
 
   let response: Response;
   try {

@@ -16,7 +16,7 @@ export interface AuthContextValue {
   signedOut: boolean;
   login: (input: LoginInput) => Promise<void>;
   /** Creates the account; the user must confirm their email before signing in. */
-  register: (input: RegisterInput) => Promise<VerificationPendingDTO>;
+  register: (input: RegisterInput, captchaToken?: string) => Promise<VerificationPendingDTO>;
   logout: () => Promise<void>;
   setUser: (user: CurrentUserDTO) => void;
   /** Re-read the signed-in user (role, group and permissions) from the API. */
