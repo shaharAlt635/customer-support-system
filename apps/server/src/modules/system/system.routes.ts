@@ -16,6 +16,8 @@ export const systemRoutes: FastifyPluginAsync = async (app) => {
   /** Settings the web client needs before sign-in. */
   app.get('/config', async (): Promise<PublicConfigDTO> => ({
     allowRegistration: app.config.ALLOW_REGISTRATION,
+    allowCompanySignup: app.config.ALLOW_COMPANY_SIGNUP,
+    devMailbox: app.config.devMailboxEnabled,
     uploads: {
       maxFileSizeBytes: app.config.maxUploadBytes,
       maxFiles: app.config.MAX_FILES_PER_UPLOAD,

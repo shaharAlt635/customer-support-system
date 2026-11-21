@@ -21,5 +21,7 @@ declare module 'fastify' {
     authenticate: (request: FastifyRequest) => Promise<void>;
     /** preHandler factory: authenticates, then requires every listed permission. */
     authorize: (...permissions: Permission[]) => (request: FastifyRequest) => Promise<void>;
+    /** preHandler factory: authenticates, then requires at least one listed permission. */
+    authorizeAny: (...permissions: Permission[]) => (request: FastifyRequest) => Promise<void>;
   }
 }

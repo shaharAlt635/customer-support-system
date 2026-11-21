@@ -1,5 +1,5 @@
 import fastifyJwt from '@fastify/jwt';
-import { type Permission, hasPermission } from '@support-desk/shared';
+import { type Permission, effectivePermissions } from '@support-desk/shared';
 import type { FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 import { Errors } from '../lib/errors';
@@ -18,9 +18,11 @@ export default fp(
 
     async function authenticate(request: FastifyRequest): Promise<void> {
       let userId: string;
+      let companyId: string;
       try {
-        const payload = await request.jwtVerify<{ sub: string }>();
+        const payload = await request.jwtVerify<{ sub: string; cid: string }>();
         userId = payload.sub;
+        companyId = payload.cid;
       } catch (error) {
         const code = (error as { code?: string }).code;
         if (code === 'FST_JWT_AUTHORIZATION_TOKEN_EXPIRED') {
@@ -31,13 +33,29 @@ export default fp(
 
       const user = await app.prisma.user.findUnique({
         where: { id: userId },
-        select: { id: true, email: true, name: true, role: true, isActive: true },
+        select: {
+          id: true,
+          companyId: true,
+          email: true,
+          name: true,
+          role: true,
+          isActive: true,
+          group: { select: { permissions: true } },
+        },
       });
-      if (!user || !user.isActive) {
+      if (!user || !user.isActive || user.companyId !== companyId) {
         throw Errors.unauthorized('This account is no longer active', 'ACCOUNT_DISABLED');
       }
 
-      request.user = { id: user.id, email: user.email, name: user.name, role: user.role };
+      request.user = {
+        id: user.id,
+        companyId: user.companyId,
+        email: user.email,
+        name: user.name,
+        role: user.role,
+        // Re-read on every request so group edits apply immediately.
+        permissions: effectivePermissions(user.role, user.group?.permissions),
+      };
     }
 
     app.decorate('authenticate', authenticate);
@@ -45,7 +63,16 @@ export default fp(
     app.decorate('authorize', (...permissions: Permission[]) => {
       return async (request: FastifyRequest) => {
         await authenticate(request);
-        if (!permissions.every((permission) => hasPermission(request.user.role, permission))) {
+        if (!permissions.every((permission) => request.user.permissions.includes(permission))) {
+          throw Errors.forbidden();
+        }
+      };
+    });
+
+    app.decorate('authorizeAny', (...permissions: Permission[]) => {
+      return async (request: FastifyRequest) => {
+        await authenticate(request);
+        if (!permissions.some((permission) => request.user.permissions.includes(permission))) {
           throw Errors.forbidden();
         }
       };
