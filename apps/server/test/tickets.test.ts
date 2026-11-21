@@ -7,7 +7,7 @@ import type {
 } from '@support-desk/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createTestApp, multipart, resetDatabase, signedInAs } from './helpers';
+import { company, createTestApp, multipart, resetDatabase, signedInAs } from './helpers';
 
 let app: FastifyInstance;
 
@@ -103,7 +103,7 @@ describe('ticket creation', () => {
 
   it('rejects inactive categories', async () => {
     const category = await app.prisma.category.create({
-      data: { name: 'Legacy', color: '#000000', isActive: false },
+      data: { companyId: company().id, name: 'Legacy', color: '#000000', isActive: false },
     });
     const res = await app.inject({
       method: 'POST',
@@ -268,7 +268,7 @@ describe('assignment and triage', () => {
 
   it('records category changes with readable names', async () => {
     const category = await app.prisma.category.create({
-      data: { name: 'Billing', color: '#22c55e' },
+      data: { companyId: company().id, name: 'Billing', color: '#22c55e' },
     });
     const ticket = await createTicket(customer);
     const res = await patch(agent, ticket.id, { categoryId: category.id });

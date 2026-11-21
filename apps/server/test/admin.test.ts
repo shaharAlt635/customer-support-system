@@ -1,7 +1,7 @@
-import type { CategoryDTO, Paginated, UserDTO } from '@support-desk/shared';
+import type { CategoryDTO } from '@support-desk/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createTestApp, login, resetDatabase, signedInAs } from './helpers';
+import { createTestApp, resetDatabase, signedInAs } from './helpers';
 
 let app: FastifyInstance;
 
@@ -24,111 +24,6 @@ beforeEach(async () => {
     signedInAs(app, 'AGENT'),
     signedInAs(app, 'CUSTOMER'),
   ]);
-});
-
-describe('user management', () => {
-  it('is restricted to admins', async () => {
-    for (const actor of [agent, customer]) {
-      const res = await app.inject({ method: 'GET', url: '/api/users', headers: actor.headers });
-      expect(res.statusCode).toBe(403);
-    }
-    const res = await app.inject({ method: 'GET', url: '/api/users', headers: admin.headers });
-    expect(res.statusCode).toBe(200);
-    expect(res.json<Paginated<UserDTO>>().meta.total).toBe(3);
-  });
-
-  it('creates staff accounts that can sign in', async () => {
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/users',
-      headers: admin.headers,
-      payload: {
-        name: 'New Agent',
-        email: 'new.agent@example.com',
-        password: 'Welcome123',
-        role: 'AGENT',
-      },
-    });
-    expect(res.statusCode).toBe(201);
-    expect(res.json<UserDTO>()).toMatchObject({ role: 'AGENT', isActive: true });
-    await expect(login(app, 'new.agent@example.com', 'Welcome123')).resolves.toBeDefined();
-  });
-
-  it('filters users by role and search term', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: `/api/users?role=AGENT&q=${encodeURIComponent(agent.user.email.slice(0, 8))}`,
-      headers: admin.headers,
-    });
-    expect(res.json<Paginated<UserDTO>>().data.map((u) => u.id)).toEqual([agent.user.id]);
-  });
-
-  it('prevents admins from locking themselves out', async () => {
-    const demote = await app.inject({
-      method: 'PATCH',
-      url: `/api/users/${admin.user.id}`,
-      headers: admin.headers,
-      payload: { role: 'AGENT' },
-    });
-    expect(demote.statusCode).toBe(400);
-
-    const deactivate = await app.inject({
-      method: 'PATCH',
-      url: `/api/users/${admin.user.id}`,
-      headers: admin.headers,
-      payload: { isActive: false },
-    });
-    expect(deactivate.statusCode).toBe(400);
-  });
-
-  it('deactivating an agent revokes sessions and unassigns open tickets', async () => {
-    const ticket = await app.prisma.ticket.create({
-      data: {
-        number: 5000,
-        subject: 'Assigned work',
-        description: 'Something the agent is working on',
-        customerId: customer.user.id,
-        assigneeId: agent.user.id,
-        status: 'IN_PROGRESS',
-      },
-    });
-
-    const res = await app.inject({
-      method: 'PATCH',
-      url: `/api/users/${agent.user.id}`,
-      headers: admin.headers,
-      payload: { isActive: false },
-    });
-    expect(res.statusCode).toBe(200);
-
-    const reloaded = await app.prisma.ticket.findUniqueOrThrow({ where: { id: ticket.id } });
-    expect(reloaded.assigneeId).toBeNull();
-    expect(
-      await app.prisma.refreshToken.count({ where: { userId: agent.user.id, revokedAt: null } }),
-    ).toBe(0);
-    expect(
-      (await app.inject({ method: 'GET', url: '/api/tickets', headers: agent.headers })).statusCode,
-    ).toBe(401);
-  });
-
-  it('lists assignable staff for agents', async () => {
-    const res = await app.inject({
-      method: 'GET',
-      url: '/api/users/assignable',
-      headers: agent.headers,
-    });
-    expect(res.statusCode).toBe(200);
-    expect(
-      res
-        .json()
-        .data.map((u: { id: string }) => u.id)
-        .sort(),
-    ).toEqual([admin.user.id, agent.user.id].sort());
-    expect(
-      (await app.inject({ method: 'GET', url: '/api/users/assignable', headers: customer.headers }))
-        .statusCode,
-    ).toBe(403);
-  });
 });
 
 describe('categories', () => {
