@@ -6,13 +6,28 @@ async function main() {
 
   try {
     await app.prisma.$connect();
-    await ensureDatabaseIndexes(app.prisma);
   } catch (error) {
     app.log.fatal({ err: error }, 'Could not connect to MongoDB. Is DATABASE_URL correct?');
     process.exit(1);
   }
+  // Housekeeping indexes (token expiry); the API works without them, so don't block startup.
+  await ensureDatabaseIndexes(app.prisma).catch((error: unknown) =>
+    app.log.error({ err: error }, 'Could not create TTL indexes'),
+  );
+
+  // Unconfirmed public requests expire after 24 hours; sweep them (and their files) hourly.
+  const sweep = () =>
+    app.services.portal
+      .cleanupExpired()
+      .then((count) => count && app.log.info({ count }, 'Removed expired unconfirmed requests'))
+      .catch((error: unknown) => app.log.error({ err: error }, 'Request cleanup failed'));
+  const sweeper = setInterval(sweep, 60 * 60 * 1000);
+  sweeper.unref();
+  // Hooks must be registered before the server starts listening.
+  app.addHook('onClose', async () => clearInterval(sweeper));
 
   await app.listen({ host: app.config.HOST, port: app.config.PORT });
+  void sweep();
 
   let shuttingDown = false;
   const shutdown = async (signal: NodeJS.Signals) => {

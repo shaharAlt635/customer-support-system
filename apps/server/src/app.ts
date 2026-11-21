@@ -9,14 +9,21 @@ import fastifyStatic from '@fastify/static';
 import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { type AppConfig, loadConfig } from './config/env';
+import { type Mailer, createMailer } from './email/mailer';
 import { AppError } from './lib/errors';
 import { attachmentRoutes } from './modules/attachments/attachments.routes';
 import { authRoutes } from './modules/auth/auth.routes';
 import { categoryRoutes } from './modules/categories/categories.routes';
+import { companyRoutes, companySettingsRoutes } from './modules/companies/companies.routes';
+import { customerRoutes } from './modules/customers/customers.routes';
+import { devRoutes } from './modules/dev/dev.routes';
+import { groupRoutes } from './modules/groups/groups.routes';
+import { notificationRoutes } from './modules/notifications/notifications.routes';
+import { portalRoutes } from './modules/portal/portal.routes';
 import { statsRoutes } from './modules/stats/stats.routes';
 import { systemRoutes } from './modules/system/system.routes';
 import { ticketRoutes } from './modules/tickets/tickets.routes';
-import { userRoutes } from './modules/users/users.routes';
+import { meRoutes, teamRoutes } from './modules/team/team.routes';
 import authPlugin from './plugins/auth';
 import { registerErrorHandlers } from './plugins/error-handler';
 import { createServices } from './services';
@@ -26,6 +33,7 @@ export interface BuildAppOptions {
   config?: AppConfig;
   prisma?: PrismaClient;
   storage?: FileStorage;
+  mailer?: Mailer;
 }
 
 function loggerOptions(config: AppConfig): FastifyServerOptions['logger'] {
@@ -112,6 +120,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       storage,
       config,
       log: app.log,
+      mailer: options.mailer ?? createMailer(config, prisma, app.log),
       signAccessToken: (payload) => app.jwt.sign(payload),
     }),
   );
@@ -122,12 +131,20 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(
     async (api) => {
       await api.register(systemRoutes);
+      await api.register(companyRoutes, { prefix: '/companies' });
       await api.register(authRoutes, { prefix: '/auth' });
-      await api.register(userRoutes, { prefix: '/users' });
+      await api.register(companySettingsRoutes, { prefix: '/company' });
+      await api.register(teamRoutes, { prefix: '/team' });
+      await api.register(groupRoutes, { prefix: '/groups' });
+      await api.register(customerRoutes, { prefix: '/customers' });
+      await api.register(meRoutes, { prefix: '/me' });
+      await api.register(notificationRoutes, { prefix: '/notifications' });
+      await api.register(portalRoutes, { prefix: '/portal' });
       await api.register(categoryRoutes, { prefix: '/categories' });
       await api.register(ticketRoutes, { prefix: '/tickets' });
       await api.register(attachmentRoutes, { prefix: '/attachments' });
       await api.register(statsRoutes, { prefix: '/stats' });
+      if (config.devMailboxEnabled) await api.register(devRoutes, { prefix: '/dev' });
     },
     { prefix: '/api' },
   );
