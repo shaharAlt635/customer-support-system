@@ -6,7 +6,6 @@ import { createRoot } from 'react-dom/client';
 import { RouterProvider } from 'react-router';
 import { Toaster } from 'sonner';
 import { ApiError } from './api/client';
-import { AuthProvider } from './auth/AuthProvider';
 import { router } from './router';
 
 const queryClient = new QueryClient({
@@ -25,10 +24,9 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <RouterProvider router={router} />
-        <Toaster position="top-right" richColors closeButton />
-      </AuthProvider>
+      {/* Sessions are per company, so AuthProvider lives inside the /:slug route. */}
+      <RouterProvider router={router} />
+      <Toaster position="top-right" richColors closeButton />
     </QueryClientProvider>
   </StrictMode>,
 );

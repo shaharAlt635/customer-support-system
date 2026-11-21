@@ -1,5 +1,6 @@
 import { CircleCheck, LifeBuoy } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { Link } from 'react-router';
 
 const HIGHLIGHTS = [
   'Track every request from first message to resolution',
@@ -10,26 +11,34 @@ const HIGHLIGHTS = [
 export function AuthLayout({
   title,
   subtitle,
+  brand,
   children,
 }: {
   title: string;
-  subtitle: ReactNode;
+  subtitle?: ReactNode;
+  /** Company name shown above the form; defaults to the product name. */
+  brand?: string;
   children: ReactNode;
 }) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-2">
       <div className="flex flex-col justify-center px-4 py-12 sm:px-12 lg:px-20">
         <div className="mx-auto w-full max-w-sm">
-          <div className="mb-8 flex items-center gap-2.5">
+          <Link to="/" className="mb-8 flex items-center gap-2.5">
             <span className="flex size-9 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm">
               <LifeBuoy className="size-5" aria-hidden />
             </span>
-            <span className="text-lg font-semibold tracking-tight text-slate-900">
-              Support Desk
+            <span className="min-w-0">
+              <span className="block truncate text-lg leading-tight font-semibold tracking-tight text-slate-900">
+                {brand ?? 'Support Desk'}
+              </span>
+              {brand && (
+                <span className="block text-xs leading-tight text-slate-500">Support Desk</span>
+              )}
             </span>
-          </div>
+          </Link>
           <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{title}</h1>
-          <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
+          {subtitle && <p className="mt-2 text-sm text-slate-500">{subtitle}</p>}
           <div className="mt-8">{children}</div>
         </div>
       </div>

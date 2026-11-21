@@ -2,20 +2,24 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { type LoginInput, loginSchema } from '@support-desk/shared';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
+import { toast } from 'sonner';
 import { ApiError, getErrorMessage } from '../api/client';
-import { usePublicConfig } from '../api/queries';
+import { authApi } from '../api/endpoints';
 import { useAuth } from '../auth/auth-context';
+import { useCompany, useCompanyPath } from '../company/company-context';
 import { Button } from '../components/ui/Button';
 import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
 import { AuthLayout } from '../features/auth/AuthLayout';
+import { SignInLinkForm } from '../features/portal/SignInLinkForm';
 import { PasswordInput } from '../features/auth/PasswordInput';
 import { useDocumentTitle } from '../lib/hooks';
 
 const SHOW_DEMO_ACCOUNTS =
   import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_ACCOUNTS === 'true';
 
+/** The seed script creates these accounts in every demo company. */
 const DEMO_ACCOUNTS = [
   { label: 'Admin', email: 'admin@example.com', password: 'Admin123!' },
   { label: 'Agent', email: 'agent@example.com', password: 'Agent123!' },
@@ -23,10 +27,13 @@ const DEMO_ACCOUNTS = [
 ];
 
 export default function LoginPage() {
-  useDocumentTitle('Sign in');
+  const company = useCompany();
+  const companyPath = useCompanyPath();
+  const location = useLocation();
   const { login } = useAuth();
-  const { data: config } = usePublicConfig();
   const [formError, setFormError] = useState<string>();
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string>();
+  useDocumentTitle(`Sign in to ${company.name}`);
 
   const {
     register,
@@ -35,35 +42,55 @@ export default function LoginPage() {
     formState: { errors, isSubmitting },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: {
+      email: (location.state as { email?: string } | null)?.email ?? '',
+      password: '',
+    },
   });
 
   const onSubmit = async (values: LoginInput) => {
     setFormError(undefined);
+    setUnverifiedEmail(undefined);
     try {
       await login(values);
     } catch (error) {
-      setFormError(
-        error instanceof ApiError && error.code === 'RATE_LIMITED'
-          ? 'Too many attempts. Please wait a minute and try again.'
-          : getErrorMessage(error),
-      );
+      if (error instanceof ApiError && error.code === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(values.email);
+      } else if (error instanceof ApiError && error.code === 'RATE_LIMITED') {
+        setFormError('Too many attempts. Please wait a minute and try again.');
+      } else {
+        setFormError(getErrorMessage(error));
+      }
+    }
+  };
+
+  const resend = async () => {
+    if (!unverifiedEmail) return;
+    try {
+      await authApi.resendVerification({ companySlug: company.slug, email: unverifiedEmail });
+      toast.success(`We sent a new confirmation link to ${unverifiedEmail}`);
+    } catch (error) {
+      toast.error(getErrorMessage(error));
     }
   };
 
   return (
     <AuthLayout
-      title="Welcome back"
+      brand={company.name}
+      title="Sign in"
       subtitle={
-        config?.allowRegistration ? (
+        company.allowRegistration ? (
           <>
-            New here?{' '}
-            <Link to="/register" className="font-medium text-brand-600 hover:text-brand-800">
-              Create a customer account
+            New to {company.name}?{' '}
+            <Link
+              to={companyPath('/register')}
+              className="font-medium text-brand-600 hover:text-brand-800"
+            >
+              Create an account
             </Link>
           </>
         ) : (
-          'Sign in to your account to continue.'
+          `Use your ${company.name} account.`
         )
       }
     >
@@ -74,6 +101,17 @@ export default function LoginPage() {
             className="rounded-lg bg-red-50 px-3 py-2.5 text-sm text-red-700 ring-1 ring-red-200"
           >
             {formError}
+          </div>
+        )}
+        {unverifiedEmail && (
+          <div
+            role="alert"
+            className="rounded-lg bg-amber-50 px-3 py-2.5 text-sm text-amber-900 ring-1 ring-amber-200"
+          >
+            Please confirm your email address first — check your inbox for the link.{' '}
+            <button type="button" onClick={resend} className="font-medium underline">
+              Send a new link
+            </button>
           </div>
         )}
         <Field label="Email" htmlFor="email" error={errors.email?.message}>
@@ -94,10 +132,27 @@ export default function LoginPage() {
             {...register('password')}
           />
         </Field>
+        <div className="-mt-2 text-right">
+          <Link
+            to={companyPath('/forgot-password')}
+            className="text-sm font-medium text-brand-600 hover:text-brand-800"
+          >
+            Forgot password?
+          </Link>
+        </div>
         <Button type="submit" size="lg" className="w-full" loading={isSubmitting}>
           Sign in
         </Button>
       </form>
+
+      <details className="group mt-6 rounded-xl border border-slate-200 p-4">
+        <summary className="cursor-pointer text-sm font-medium text-slate-700 marker:text-slate-400">
+          No password? Get a sign-in link by email
+        </summary>
+        <div className="mt-3">
+          <SignInLinkForm companySlug={company.slug} companyName={company.name} />
+        </div>
+      </details>
 
       {SHOW_DEMO_ACCOUNTS && (
         <div className="mt-8 rounded-xl border border-dashed border-slate-300 p-4">

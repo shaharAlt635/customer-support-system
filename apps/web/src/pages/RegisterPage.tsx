@@ -1,22 +1,26 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { type RegisterInput, registerSchema } from '@support-desk/shared';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, Navigate } from 'react-router';
-import { usePublicConfig } from '../api/queries';
+import { Link, Navigate, useSearchParams } from 'react-router';
 import { useAuth } from '../auth/auth-context';
+import { useCompany, useCompanyPath } from '../company/company-context';
 import { Button } from '../components/ui/Button';
 import { Field } from '../components/ui/Field';
 import { Input } from '../components/ui/Input';
-import { FullPageSpinner } from '../components/ui/Spinner';
 import { AuthLayout } from '../features/auth/AuthLayout';
+import { CheckEmailNotice } from '../features/auth/CheckEmailNotice';
 import { PasswordInput } from '../features/auth/PasswordInput';
 import { handleFormError } from '../lib/form-errors';
 import { useDocumentTitle } from '../lib/hooks';
 
 export default function RegisterPage() {
-  useDocumentTitle('Create account');
+  const company = useCompany();
+  const [params] = useSearchParams();
+  const companyPath = useCompanyPath();
   const { register: signUp } = useAuth();
-  const { data: config, isPending } = usePublicConfig();
+  const [pendingEmail, setPendingEmail] = useState<string>();
+  useDocumentTitle(`Create a ${company.name} account`);
 
   const {
     register,
@@ -25,31 +29,43 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<RegisterInput>({
     resolver: zodResolver(registerSchema),
-    defaultValues: { name: '', email: '', password: '' },
+    // Invitation emails link here with ?email= so the invited address is pre-filled.
+    defaultValues: { name: '', email: params.get('email') ?? '', password: '' },
   });
 
-  if (isPending) return <FullPageSpinner />;
-  if (config && !config.allowRegistration) return <Navigate to="/login" replace />;
+  if (!company.allowRegistration) return <Navigate to={companyPath('/login')} replace />;
 
   const onSubmit = async (values: RegisterInput) => {
     try {
-      await signUp(values);
+      const result = await signUp(values);
+      setPendingEmail(result.email);
     } catch (error) {
       handleFormError(error, setError, ['name', 'email', 'password']);
     }
   };
 
+  const signInLink = (
+    <>
+      Already have an account?{' '}
+      <Link to={companyPath('/login')} className="font-medium text-brand-600 hover:text-brand-800">
+        Sign in
+      </Link>
+    </>
+  );
+
+  if (pendingEmail) {
+    return (
+      <AuthLayout brand={company.name} title="Almost there" subtitle={signInLink}>
+        <CheckEmailNotice email={pendingEmail} companySlug={company.slug} />
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout
-      title="Create your account"
-      subtitle={
-        <>
-          Already have an account?{' '}
-          <Link to="/login" className="font-medium text-brand-600 hover:text-brand-800">
-            Sign in
-          </Link>
-        </>
-      }
+      brand={company.name}
+      title={`Create your ${company.name} account`}
+      subtitle={signInLink}
     >
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
         <Field label="Full name" htmlFor="name" error={errors.name?.message}>

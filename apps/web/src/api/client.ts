@@ -23,11 +23,26 @@ export class ApiError extends Error {
 // ---------------------------------------------------------------------------
 
 let accessToken: string | null = null;
+/** Accounts are per company, so the session (and refresh cookie) is tied to one company. */
+let companySlug: string | null = null;
 let sessionExpiredHandler: (() => void) | null = null;
 let refreshInFlight: Promise<AuthResponse | null> | null = null;
 
 export function setAccessToken(token: string | null): void {
   accessToken = token;
+}
+
+/** Switch the client to another company's session (drops the current access token). */
+export function setCompanySlug(slug: string | null): void {
+  if (slug !== companySlug) {
+    companySlug = slug;
+    accessToken = null;
+    refreshInFlight = null;
+  }
+}
+
+export function getCompanySlug(): string | null {
+  return companySlug;
 }
 
 export function onSessionExpired(handler: (() => void) | null): void {
@@ -37,9 +52,15 @@ export function onSessionExpired(handler: (() => void) | null): void {
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function performRefresh(attempt = 0): Promise<AuthResponse | null> {
+  if (!companySlug) return null;
   let response: Response;
   try {
-    response = await fetch(`${API_URL}/auth/refresh`, { method: 'POST', credentials: 'include' });
+    response = await fetch(`${API_URL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companySlug }),
+    });
   } catch {
     throw new ApiError(0, 'NETWORK_ERROR', 'Unable to reach the server.');
   }

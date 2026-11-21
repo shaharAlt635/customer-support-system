@@ -1,20 +1,30 @@
-import {
-  type AuthResponse,
-  type Permission,
-  type UserDTO,
-  hasPermission,
-} from '@support-desk/shared';
+import type { AuthResponse, CurrentUserDTO, Permission } from '@support-desk/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { onSessionExpired, refreshSession, setAccessToken } from '../api/client';
+import { onSessionExpired, refreshSession, setAccessToken, setCompanySlug } from '../api/client';
 import { authApi } from '../api/endpoints';
 import { AuthContext, type AuthContextValue, type AuthStatus } from './auth-context';
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+/** Data that doesn't depend on who is signed in survives sign-out. */
+const PUBLIC_QUERY_KEYS = new Set(['company', 'config']);
+
+/**
+ * Session for one company. Mounted (and keyed) per company by `CompanyRoot`, since each
+ * company has its own accounts and refresh cookie.
+ */
+export function AuthProvider({
+  companySlug,
+  children,
+}: {
+  companySlug: string;
+  children: ReactNode;
+}) {
+  // Point the API client at this company before any child request runs (idempotent).
+  setCompanySlug(companySlug);
   const queryClient = useQueryClient();
   const [status, setStatus] = useState<AuthStatus>('loading');
-  const [user, setUserState] = useState<UserDTO | null>(null);
+  const [user, setUserState] = useState<CurrentUserDTO | null>(null);
   const [signedOut, setSignedOut] = useState(false);
 
   const startSession = useCallback((session: AuthResponse) => {
@@ -28,7 +38,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAccessToken(null);
     setUserState(null);
     setStatus('unauthenticated');
-    queryClient.clear();
+    queryClient.removeQueries({
+      predicate: (query) => !PUBLIC_QUERY_KEYS.has(String(query.queryKey[0])),
+    });
   }, [queryClient]);
 
   // Restore the session from the refresh cookie on first load.
@@ -60,18 +72,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       status,
       user,
-      login: async (input) => startSession(await authApi.login(input)),
-      register: async (input) => startSession(await authApi.register(input)),
+      login: async (input) => startSession(await authApi.login({ ...input, companySlug })),
+      register: (input) => authApi.register({ ...input, companySlug }),
       signedOut,
       logout: async () => {
-        await authApi.logout().catch(() => undefined);
+        await authApi.logout(companySlug).catch(() => undefined);
         setSignedOut(true);
         endSession();
       },
       setUser: setUserState,
-      can: (permission: Permission) => (user ? hasPermission(user.role, permission) : false),
+      refreshUser: async () => setUserState((await authApi.me()).user),
+      can: (permission: Permission) => user?.permissions.includes(permission) ?? false,
+      canAny: (...permissions: Permission[]) =>
+        permissions.some((permission) => user?.permissions.includes(permission) ?? false),
     }),
-    [status, user, signedOut, startSession, endSession],
+    [status, user, signedOut, companySlug, startSession, endSession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
