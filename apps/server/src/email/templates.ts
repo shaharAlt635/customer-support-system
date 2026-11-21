@@ -8,20 +8,26 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const BRAND = 'Support Desk';
+
 interface LayoutOptions {
   to: string;
   subject: string;
-  companyName: string;
+  /** The company the email is about; omitted for emails from Support Desk itself. */
+  companyName?: string;
   heading: string;
   paragraphs: string[];
-  action: { label: string; url: string };
+  /** Rendered as a list of links below the paragraphs. */
+  links?: { label: string; detail: string; url: string }[];
+  action?: { label: string; url: string };
   footnote: string;
 }
 
 /** A single, inline-styled layout that renders consistently across email clients. */
 function layout(options: LayoutOptions): EmailMessage {
-  const { to, subject, companyName, heading, paragraphs, action, footnote } = options;
-  const company = escapeHtml(companyName);
+  const { to, subject, companyName, heading, paragraphs, links = [], action, footnote } = options;
+  const company = escapeHtml(companyName ?? BRAND);
+  const sentBy = companyName ? `Sent by ${BRAND} on behalf of ${company}` : `Sent by ${BRAND}`;
 
   const html = `<!doctype html>
 <html lang="en">
@@ -37,29 +43,43 @@ function layout(options: LayoutOptions): EmailMessage {
                 `<tr><td style="padding:0 32px 12px;font-size:15px;line-height:1.6;color:#334155;">${escapeHtml(p)}</td></tr>`,
             )
             .join('')}
-          <tr><td style="padding:12px 32px 24px;">
+          ${links
+            .map(
+              (link) =>
+                `<tr><td style="padding:4px 32px;"><a href="${escapeHtml(link.url)}" style="display:block;padding:12px 16px;border:1px solid #e2e8f0;border-radius:8px;text-decoration:none;"><span style="font-size:15px;font-weight:600;color:#4f46e5;">${escapeHtml(link.label)}</span><br /><span style="font-size:13px;color:#64748b;">${escapeHtml(link.detail)}</span></a></td></tr>`,
+            )
+            .join('')}
+          ${
+            action
+              ? `<tr><td style="padding:12px 32px 24px;">
             <a href="${escapeHtml(action.url)}" style="display:inline-block;background:#4f46e5;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:11px 20px;border-radius:8px;">${escapeHtml(action.label)}</a>
-          </td></tr>
+          </td></tr>`
+              : '<tr><td style="padding:12px 0 0;"></td></tr>'
+          }
           <tr><td style="padding:0 32px 28px;font-size:12px;line-height:1.6;color:#64748b;">
-            ${escapeHtml(footnote)}<br />
+            ${escapeHtml(footnote)}${
+              action
+                ? `<br />
             If the button doesn't work, paste this link into your browser:<br />
-            <span style="word-break:break-all;color:#4f46e5;">${escapeHtml(action.url)}</span>
+            <span style="word-break:break-all;color:#4f46e5;">${escapeHtml(action.url)}</span>`
+                : ''
+            }
           </td></tr>
         </table>
-        <p style="font-size:12px;color:#94a3b8;margin-top:16px;">Sent by Support Desk on behalf of ${company}</p>
+        <p style="font-size:12px;color:#94a3b8;margin-top:16px;">${sentBy}</p>
       </td></tr>
     </table>
   </body>
 </html>`;
 
   const text = [
-    companyName,
+    companyName ?? BRAND,
     '',
     heading,
     '',
     ...paragraphs.flatMap((p) => [p, '']),
-    `${action.label}: ${action.url}`,
-    '',
+    ...links.flatMap((link) => [`${link.label} (${link.detail}): ${link.url}`, '']),
+    ...(action ? [`${action.label}: ${action.url}`, ''] : []),
     footnote,
   ].join('\n');
 
@@ -216,5 +236,37 @@ export function replyNotificationMessage(input: {
     paragraphs: [input.preview],
     action: { label: 'View and reply', url: input.url },
     footnote: 'The button signs you in automatically. The link works once and expires in 7 days.',
+  });
+}
+
+const ROLE_LABELS = { OWNER: 'Owner', AGENT: 'Team member', CUSTOMER: 'Customer' } as const;
+
+/** "Find my company": every company where this email has an account. */
+export function companyListMessage(input: {
+  to: string;
+  accounts: {
+    companyName: string;
+    role: keyof typeof ROLE_LABELS;
+    hasPassword: boolean;
+    url: string;
+  }[];
+}): EmailMessage {
+  const count = input.accounts.length;
+  return layout({
+    to: input.to,
+    subject: 'Your Support Desk companies',
+    heading: count === 1 ? 'Here is your company' : `Here are your ${count} companies`,
+    paragraphs: [
+      `Someone (hopefully you) asked which companies ${input.to} has an account with on Support Desk. Each company has its own account and password — pick one to sign in.`,
+    ],
+    links: input.accounts.map((account) => ({
+      label: account.companyName,
+      detail: account.hasPassword
+        ? ROLE_LABELS[account.role]
+        : `${ROLE_LABELS[account.role]} · signs in with an email link`,
+      url: account.url,
+    })),
+    footnote:
+      "If you didn't ask for this, you can ignore this email — nothing about your accounts has changed.",
   });
 }

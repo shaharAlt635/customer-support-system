@@ -124,6 +124,8 @@ model User {
 
   @@unique([companyId, email])
   @@index([companyId, role, isActive])
+  /// "Find my company" looks up an email across every company.
+  @@index([email])
   @@map("users")
 }
 

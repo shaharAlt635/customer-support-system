@@ -1,9 +1,10 @@
-import type { PrismaClient, TokenPurpose } from '@prisma/client';
+import type { PrismaClient, Role, TokenPurpose } from '@prisma/client';
 import type { FastifyBaseLogger } from 'fastify';
 import type { AppConfig } from '../../config/env';
 import type { EmailMessage, Mailer } from '../../email/mailer';
 import {
   accountClaimMessage,
+  companyListMessage,
   magicLinkMessage,
   replyNotificationMessage,
   resetPasswordMessage,
@@ -122,6 +123,24 @@ export class AccountEmails {
         authorName,
         preview,
         url: `${this.config.APP_URL}/sign-in-link?token=${token}&ticket=${ticket.id}`,
+      }),
+    );
+  }
+
+  /** "Find my company": list every company where this email has an account. */
+  async sendCompanyList(
+    email: string,
+    accounts: { role: Role; hasPassword: boolean; company: { name: string; slug: string } }[],
+  ) {
+    await this.deliver(
+      companyListMessage({
+        to: email,
+        accounts: accounts.map((account) => ({
+          companyName: account.company.name,
+          role: account.role,
+          hasPassword: account.hasPassword,
+          url: `${this.config.APP_URL}/${account.company.slug}/login`,
+        })),
       }),
     );
   }

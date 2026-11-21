@@ -271,6 +271,28 @@ export class AuthService {
     }
   }
 
+  /**
+   * "Find my company": email the companies where this address has an active account.
+   * Always succeeds, and sends nothing for unknown emails, so it reveals nothing.
+   */
+  async sendCompanyList(email: string): Promise<void> {
+    const accounts = await this.prisma.user.findMany({
+      where: { email, isActive: true },
+      select: { role: true, passwordHash: true, company: { select: { name: true, slug: true } } },
+      orderBy: { createdAt: 'asc' },
+      take: 50,
+    });
+    if (accounts.length === 0) return;
+    await this.emails.sendCompanyList(
+      email,
+      accounts.map(({ role, passwordHash, company }) => ({
+        role,
+        hasPassword: passwordHash !== null,
+        company,
+      })),
+    );
+  }
+
   /** Always succeeds so the response never reveals which emails have accounts. */
   async requestPasswordReset(input: EmailRequestInput): Promise<void> {
     const user = await this.findAccount(input);

@@ -106,6 +106,10 @@ export const emailRequestSchema = z.object({
 });
 export type EmailRequestInput = z.infer<typeof emailRequestSchema>;
 
+/** "Find my company": email the list of companies where this address has an account. */
+export const findCompanySchema = z.object({ email: emailSchema });
+export type FindCompanyInput = z.infer<typeof findCompanySchema>;
+
 export const verifyEmailSchema = z.object({ token: tokenSchema });
 /** Any single-use emailed link (sign-in links, ticket confirmations). */
 export const emailLinkSchema = z.object({ token: tokenSchema });

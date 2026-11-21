@@ -4,6 +4,7 @@ import {
   companySettingsSchema,
   companySlugSchema,
   createCompanySchema,
+  findCompanySchema,
 } from '@support-desk/shared';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
@@ -18,10 +19,21 @@ export const companyRoutes: FastifyPluginAsync = async (app) => {
   };
 
   /** Create a company and its owner account (email confirmation required). */
-  app.post('/', { config: strictLimit }, async (request, reply) => {
+  app.post('/', { config: strictLimit, preHandler: app.requireCaptcha }, async (request, reply) => {
     const input = parse(createCompanySchema, request.body);
     return reply.status(201).send(await app.services.auth.createCompany(input));
   });
+
+  /** "Find my company": emails the companies where this address has an account. */
+  app.post(
+    '/find',
+    { config: strictLimit, preHandler: app.requireCaptcha },
+    async (request, reply) => {
+      const { email } = parse(findCompanySchema, request.body);
+      await app.services.auth.sendCompanyList(email);
+      return reply.status(202).send({ ok: true });
+    },
+  );
 
   /** Live availability check for the sign-up form. */
   app.get('/check-slug', async (request) => {
