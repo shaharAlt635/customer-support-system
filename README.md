@@ -200,34 +200,37 @@ Emails sent while developing (account and request confirmations, sign-in links, 
 
 The API reads `apps/server/.env` (see [`apps/server/.env.example`](apps/server/.env.example)); every value is validated at startup and the server refuses to start with a clear message if something is wrong.
 
-| Variable                   | Default                               | Description                                                                        |
-| -------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------- |
-| `DATABASE_URL`             | —                                     | MongoDB connection string (replica set required)                                   |
-| `JWT_ACCESS_SECRET`        | —                                     | Secret for signing access tokens, **at least 32 characters**                       |
-| `ACCESS_TOKEN_TTL_MINUTES` | `15`                                  | Access-token lifetime                                                              |
-| `REFRESH_TOKEN_TTL_DAYS`   | `7`                                   | Refresh-token (session) lifetime                                                   |
-| `PORT` / `HOST`            | `4000` / `0.0.0.0`                    | Where the API listens                                                              |
-| `CORS_ORIGIN`              | `http://localhost:5173`               | Comma-separated origins allowed to call the API with credentials                   |
-| `COOKIE_SECURE`            | `true` in production                  | Send the session cookie over HTTPS only                                            |
-| `COOKIE_SAME_SITE`         | `strict`                              | Use `none` (with HTTPS) only if the web app is on a different site                 |
-| `TRUST_PROXY`              | `false`                               | Set behind a reverse proxy so client IPs/rate limits are correct                   |
-| `ALLOW_COMPANY_SIGNUP`     | `true`                                | Allow visitors to create new companies at `/signup`                                |
-| `ALLOW_REGISTRATION`       | `true`                                | Allow visitors to register customer accounts (each company can also turn it off)   |
-| `APP_URL`                  | `http://localhost:5173`               | Public URL of the web app, used for links in emails                                |
-| `EMAIL_TRANSPORT`          | `dev` (`smtp` in production)          | `dev` stores emails for `/dev/mailbox`; `smtp` sends them (required in production) |
-| `EMAIL_FROM`               | `Support Desk <no-reply@example.com>` | Sender address                                                                     |
-| `SMTP_HOST` / `SMTP_PORT`  | — / `587`                             | SMTP server (Gmail, Resend, SendGrid, Postmark, SES, …)                            |
-| `SMTP_SECURE`              | `true` for port 465                   | Use implicit TLS                                                                   |
-| `SMTP_USER` / `SMTP_PASS`  | —                                     | SMTP credentials                                                                   |
-| `UPLOAD_DIR`               | `./uploads`                           | Attachment storage directory                                                       |
-| `MAX_UPLOAD_SIZE_MB`       | `10`                                  | Per-file size limit                                                                |
-| `MAX_FILES_PER_UPLOAD`     | `5`                                   | Files per ticket/reply                                                             |
-| `RATE_LIMIT_MAX`           | `300`                                 | Requests per minute per IP                                                         |
-| `AUTH_RATE_LIMIT_MAX`      | `10`                                  | Sign-in/registration attempts per minute per IP                                    |
-| `TURNSTILE_SITE_KEY`       | —                                     | Cloudflare Turnstile site key; set both keys to turn on the human check            |
-| `TURNSTILE_SECRET_KEY`     | —                                     | Cloudflare Turnstile secret key (server-side verification)                         |
-| `SERVE_WEB`                | `false`                               | Serve the built React app from the API (single-port production deploy)             |
-| `LOG_LEVEL`                | `info`                                | Pino log level                                                                     |
+| Variable                   | Default                               | Description                                                                         |
+| -------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------- |
+| `DATABASE_URL`             | —                                     | MongoDB connection string (replica set required)                                    |
+| `JWT_ACCESS_SECRET`        | —                                     | Secret for signing access tokens, **at least 32 characters**                        |
+| `ACCESS_TOKEN_TTL_MINUTES` | `15`                                  | Access-token lifetime                                                               |
+| `REFRESH_TOKEN_TTL_DAYS`   | `7`                                   | Refresh-token (session) lifetime                                                    |
+| `PORT` / `HOST`            | `4000` / `0.0.0.0`                    | Where the API listens                                                               |
+| `CORS_ORIGIN`              | `http://localhost:5173`               | Comma-separated origins allowed to call the API with credentials                    |
+| `COOKIE_SECURE`            | `true` in production                  | Send the session cookie over HTTPS only                                             |
+| `COOKIE_SAME_SITE`         | `strict`                              | Use `none` (with HTTPS) only if the web app is on a different site                  |
+| `TRUST_PROXY`              | `false`                               | Set behind a reverse proxy so client IPs/rate limits are correct                    |
+| `ALLOW_COMPANY_SIGNUP`     | `true`                                | Allow visitors to create new companies at `/signup`                                 |
+| `ALLOW_REGISTRATION`       | `true`                                | Allow visitors to register customer accounts (each company can also turn it off)    |
+| `APP_URL`                  | `http://localhost:5173`               | Public URL of the web app, used for links in emails (on Vercel: the deployment URL) |
+| `EMAIL_TRANSPORT`          | `dev` (`smtp` in production)          | `dev` stores emails for `/dev/mailbox`; `smtp` sends them (required in production)  |
+| `EMAIL_FROM`               | `Support Desk <no-reply@example.com>` | Sender address                                                                      |
+| `SMTP_HOST` / `SMTP_PORT`  | — / `587`                             | SMTP server (Gmail, Resend, SendGrid, Postmark, SES, …)                             |
+| `SMTP_SECURE`              | `true` for port 465                   | Use implicit TLS                                                                    |
+| `SMTP_USER` / `SMTP_PASS`  | —                                     | SMTP credentials                                                                    |
+| `FILE_STORAGE`             | `disk` (`database` on Vercel)         | Where attachments are kept: `UPLOAD_DIR` on disk, or in MongoDB                     |
+| `UPLOAD_DIR`               | `./uploads`                           | Attachment storage directory                                                        |
+| `MAX_UPLOAD_SIZE_MB`       | `10` (`4` on Vercel)                  | Per-file size limit                                                                 |
+| `MAX_FILES_PER_UPLOAD`     | `5`                                   | Files per ticket/reply                                                              |
+| `RATE_LIMIT_MAX`           | `300`                                 | Requests per minute per IP                                                          |
+| `AUTH_RATE_LIMIT_MAX`      | `10`                                  | Sign-in/registration attempts per minute per IP                                     |
+| `TURNSTILE_SITE_KEY`       | —                                     | Cloudflare Turnstile site key; set both keys to turn on the human check             |
+| `TURNSTILE_SECRET_KEY`     | —                                     | Cloudflare Turnstile secret key (server-side verification)                          |
+| `SERVE_WEB`                | `false`                               | Serve the built React app from the API (single-port production deploy)              |
+| `LOG_LEVEL`                | `info`                                | Pino log level                                                                      |
+| `DEMO_MODE`                | `false`                               | Public demo: dev mailbox and demo logins in production, data reset daily            |
+| `CRON_SECRET`              | —                                     | Enables `GET /api/cron/daily` (Vercel Cron sends it as a bearer token)              |
 
 The web app reads `apps/web/.env`: `VITE_API_URL` (default `/api`), `VITE_SHOW_DEMO_ACCOUNTS` (show demo logins in production builds) and the dev-proxy settings `API_PROXY_TARGET` / `WEB_PORT`.
 
@@ -351,11 +354,24 @@ All endpoints are under `/api`. Authenticated requests send `Authorization: Bear
 npm test
 ```
 
-The API is covered by **112 integration tests** that start a real MongoDB replica set in memory (via `mongodb-memory-server`), push the Prisma schema, and exercise the app through `fastify.inject()` — no mocks. They cover company sign-up, email confirmation and password reset (reading the actual emails), guest and anonymous requests (confirmation, expiry, company settings, anonymity masking, reply emails, sign-in links, account-claim protection), "find my company", the human check on every public form (with Cloudflare's verification stubbed), per-company accounts and cookies, tenant isolation, permission groups and every ticket permission, the invitation flow (existing and new accounts, decline, expiry, resend, cancel), team and customer management, notifications, registration and login, refresh-token rotation and reuse detection, role-based access, internal-note privacy (including attachment downloads), status transitions and timestamps, assignment rules, search/filter/sort/pagination, upload limits and cleanup, statistics, and admin safeguards. The first run downloads a MongoDB binary (cached afterwards).
+The API is covered by **121 integration tests** that start a real MongoDB replica set in memory (via `mongodb-memory-server`), push the Prisma schema, and exercise the app through `fastify.inject()` — no mocks. They cover company sign-up, email confirmation and password reset (reading the actual emails), guest and anonymous requests (confirmation, expiry, company settings, anonymity masking, reply emails, sign-in links, account-claim protection), "find my company", the human check on every public form (with Cloudflare's verification stubbed), Vercel defaults, database file storage, the daily job and the demo reset, per-company accounts and cookies, tenant isolation, permission groups and every ticket permission, the invitation flow (existing and new accounts, decline, expiry, resend, cancel), team and customer management, notifications, registration and login, refresh-token rotation and reuse detection, role-based access, internal-note privacy (including attachment downloads), status transitions and timestamps, assignment rules, search/filter/sort/pagination, upload limits and cleanup, statistics, and admin safeguards. The first run downloads a MongoDB binary (cached afterwards).
 
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs formatting, linting, type-checking, tests and the production build on every push and pull request.
 
 ## Deployment
+
+### Vercel (free, no Docker)
+
+The repository deploys to Vercel as one project: the React app is served as static files and the Fastify API runs as a single Vercel Function on the same domain, so the session cookie stays first-party. [`scripts/vercel-build.mjs`](scripts/vercel-build.mjs) (the build command in [`vercel.json`](vercel.json)) syncs the database schema, builds the web app, bundles the API with its dependencies (traced with `@vercel/nft`) and writes Vercel's [Build Output](https://vercel.com/docs/build-output-api) — try it locally with `npm run build:vercel`.
+
+1. **Database:** create a free [MongoDB Atlas](https://www.mongodb.com/atlas) M0 cluster (AWS `us-east-1`, close to Vercel's default region). Add a database user, and allow access from anywhere (`0.0.0.0/0`) under _Network Access_ — Vercel has no fixed IPs.
+2. **Project:** import the repository at [vercel.com/new](https://vercel.com/new). Keep the root directory; `vercel.json` sets the commands.
+3. **Environment variables** (Production): `DATABASE_URL` (the Atlas string, with a database name, e.g. `…mongodb.net/support_desk?retryWrites=true&w=majority`), `JWT_ACCESS_SECRET` (48+ random characters) and `CRON_SECRET` (any random string). For a portfolio preview also set `DEMO_MODE=true`; for real email instead, set the `SMTP_*` variables.
+4. **Deploy.** The build creates the collections and indexes. Load the demo data once, either from your machine (`DATABASE_URL="<atlas string>" npm run db:seed`) or by calling the daily job: `curl -H "Authorization: Bearer $CRON_SECRET" https://<your-app>.vercel.app/api/cron/daily`.
+
+Every day at 04:00 UTC, Vercel Cron calls `/api/cron/daily`, which removes expired unconfirmed requests and recreates the TTL indexes — and with `DEMO_MODE`, resets the database to the demo data. On Vercel, attachments are stored in MongoDB (request bodies are capped at 4.5 MB, so files are limited to 4 MB), the client IP is taken from Vercel's proxy, and `APP_URL` defaults to the production URL.
+
+> **Demo mode is for public previews only.** Every email the app sends — including password-reset and sign-in links — appears at `/dev/mailbox` for every visitor, so anyone can sign in as any account. That is the point of a demo (visitors can try every flow without a real inbox), and the data is wiped daily, but never enable it for real customers.
 
 ### Single Node.js process
 
