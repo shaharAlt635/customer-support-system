@@ -4,7 +4,11 @@
  *
  *   npm run db:seed            # seed an empty database
  *   npm run db:seed -- --reset # wipe everything first
+ *
+ * `seedDemoData` is also used by the daily job of a public demo (DEMO_MODE) to reset it.
  */
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   type Prisma,
   PrismaClient,
@@ -16,13 +20,9 @@ import { DEFAULT_GROUPS, PRIORITY_RANK } from '@support-desk/shared';
 import { hashPassword } from '../src/lib/password';
 import { TICKET_NUMBER_OFFSET, setTicketCounter } from '../src/modules/tickets/ticket-number';
 
-try {
-  process.loadEnvFile();
-} catch {
-  // Use the process environment.
-}
-
-const prisma = new PrismaClient();
+// Set by seedDemoData, so the helpers below can stay simple.
+let prisma: PrismaClient;
+let log: (message: string) => void = console.log;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
@@ -323,6 +323,7 @@ async function wipe() {
   await prisma.permissionGroup.deleteMany();
   await prisma.counter.deleteMany();
   await prisma.devEmail.deleteMany();
+  await prisma.storedFile.deleteMany();
   await prisma.company.deleteMany();
 }
 
@@ -609,23 +610,46 @@ async function seedCompany(seed: CompanySeed) {
     });
   }
 
-  console.log(
+  log(
     `🏢 ${seed.name} (/${seed.slug}): ${users.length} users, ${categories.length} categories, ${drafts.length} tickets`,
   );
 }
 
-async function main() {
-  const reset = process.argv.includes('--reset');
+/**
+ * Load the demo companies. Returns false (and changes nothing) when the database already
+ * has data, unless `reset` wipes it first.
+ */
+export async function seedDemoData(
+  client: PrismaClient,
+  options: { reset?: boolean; log?: (message: string) => void } = {},
+): Promise<boolean> {
+  prisma = client;
+  log = options.log ?? console.log;
+  state = 0x5eed; // same dataset on every run
 
-  if (reset) {
-    console.log('🧹 Wiping existing data…');
+  if (options.reset) {
+    log('🧹 Wiping existing data…');
     await wipe();
   } else if ((await prisma.company.count()) > 0) {
-    console.log('ℹ️  Database already contains data. Run `npm run db:reset` to wipe and reseed.');
-    return;
+    log('ℹ️  Database already contains data. Run `npm run db:reset` to wipe and reseed.');
+    return false;
   }
-
   for (const company of COMPANIES) await seedCompany(company);
+  return true;
+}
+
+async function main() {
+  try {
+    process.loadEnvFile();
+  } catch {
+    // Use the process environment.
+  }
+  const client = new PrismaClient();
+  try {
+    if (!(await seedDemoData(client, { reset: process.argv.includes('--reset') }))) return;
+  } finally {
+    await client.$disconnect();
+  }
 
   console.log('\n✅ Done. Each company has its own accounts with these demo logins:');
   console.table(
@@ -636,9 +660,10 @@ async function main() {
   console.log('Sign in at http://localhost:5173/acme/login or http://localhost:5173/globex/login');
 }
 
-main()
-  .catch((error) => {
+// Run only as a script (`npm run db:seed`), not when imported.
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+  main().catch((error: unknown) => {
     console.error('❌ Seeding failed:', error);
     process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+  });
+}
