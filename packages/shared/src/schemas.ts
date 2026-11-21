@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ROLES, TICKET_PRIORITIES, TICKET_SORTS, TICKET_STATUSES } from './constants';
+import { RESERVED_SLUGS, TICKET_PRIORITIES, TICKET_SORTS, TICKET_STATUSES } from './constants';
+import { ALL_PERMISSIONS, type Permission } from './permissions';
 
 // ---------------------------------------------------------------------------
 // Primitives
@@ -27,6 +28,20 @@ export const nameSchema = z
   .trim()
   .min(2, 'Name must be at least 2 characters')
   .max(80, 'Name must be at most 80 characters');
+
+export const companySlugSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .min(3, 'Use at least 3 characters')
+  .max(40, 'Use at most 40 characters')
+  .regex(
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/,
+    'Use lowercase letters, numbers and dashes (not at the start or end)',
+  )
+  .refine((slug) => !RESERVED_SLUGS.includes(slug), 'This address is reserved');
+
+const tokenSchema = z.string().trim().min(20, 'Invalid or expired link').max(200);
 
 const pageSchema = z.coerce.number().int().min(1).default(1);
 const pageSizeSchema = z.coerce.number().int().min(1).max(100).default(20);
@@ -65,6 +80,42 @@ export const loginSchema = z.object({
 });
 export type LoginInput = z.infer<typeof loginSchema>;
 
+// Accounts belong to a company, so every sign-in/sign-up names the company.
+export const companyLoginSchema = loginSchema.extend({ companySlug: companySlugSchema });
+export type CompanyLoginInput = z.infer<typeof companyLoginSchema>;
+
+export const companyRegisterSchema = registerSchema.extend({ companySlug: companySlugSchema });
+export type CompanyRegisterInput = z.infer<typeof companyRegisterSchema>;
+
+export const createCompanySchema = z.object({
+  companyName: z
+    .string()
+    .trim()
+    .min(2, 'Company name must be at least 2 characters')
+    .max(80, 'Company name must be at most 80 characters'),
+  slug: companySlugSchema,
+  name: nameSchema,
+  email: emailSchema,
+  password: passwordSchema,
+});
+export type CreateCompanyInput = z.infer<typeof createCompanySchema>;
+
+export const emailRequestSchema = z.object({
+  companySlug: companySlugSchema,
+  email: emailSchema,
+});
+export type EmailRequestInput = z.infer<typeof emailRequestSchema>;
+
+export const verifyEmailSchema = z.object({ token: tokenSchema });
+/** Any single-use emailed link (sign-in links, ticket confirmations). */
+export const emailLinkSchema = z.object({ token: tokenSchema });
+
+export const resetPasswordSchema = z.object({
+  token: tokenSchema,
+  password: passwordSchema,
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
 export const updateProfileSchema = z.object({
   name: nameSchema,
 });
@@ -82,37 +133,61 @@ export const changePasswordSchema = z
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
 // ---------------------------------------------------------------------------
-// Users (admin)
+// Team, permission groups, customers & company settings
 // ---------------------------------------------------------------------------
 
-export const createUserSchema = z.object({
-  name: nameSchema,
-  email: emailSchema,
-  password: passwordSchema,
-  role: z.enum(ROLES),
+const permissionSchema = z.enum(ALL_PERMISSIONS as [Permission, ...Permission[]], {
+  error: 'Unknown permission',
 });
-export type CreateUserInput = z.infer<typeof createUserSchema>;
 
-export const updateUserSchema = z
-  .object({
-    name: nameSchema.optional(),
-    role: z.enum(ROLES).optional(),
-    isActive: z.boolean().optional(),
-    password: passwordSchema.optional(),
-  })
-  .refine((data) => Object.values(data).some((v) => v !== undefined), {
-    message: 'Provide at least one field to update',
-  });
-export type UpdateUserInput = z.infer<typeof updateUserSchema>;
+export const groupSchema = z.object({
+  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(50),
+  description: z.string().trim().max(200, 'Description must be at most 200 characters').nullish(),
+  permissions: z.array(permissionSchema).max(ALL_PERMISSIONS.length),
+  /** The group pre-selected when inviting new agents. */
+  isDefault: z.boolean().optional(),
+});
+export type GroupInput = z.infer<typeof groupSchema>;
 
-export const userListQuerySchema = z.object({
+export const updateGroupSchema = groupSchema.partial();
+export type UpdateGroupInput = z.infer<typeof updateGroupSchema>;
+
+export const inviteSchema = z.object({
+  email: emailSchema,
+  groupId: objectIdSchema,
+});
+export type InviteInput = z.infer<typeof inviteSchema>;
+
+export const updateMemberSchema = z.object({ groupId: objectIdSchema });
+export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;
+
+export const customerListQuerySchema = z.object({
   q: searchSchema,
-  role: z.enum(ROLES).optional(),
   status: z.enum(['active', 'inactive']).optional(),
   page: pageSchema,
   pageSize: pageSizeSchema,
 });
-export type UserListQuery = z.input<typeof userListQuerySchema>;
+export type CustomerListQuery = z.input<typeof customerListQuerySchema>;
+
+export const updateCustomerSchema = z.object({ isActive: z.boolean() });
+
+export const companySettingsSchema = z.object({
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Company name must be at least 2 characters')
+    .max(80, 'Company name must be at most 80 characters'),
+  allowAccountTickets: z.boolean().optional(),
+  allowGuestTickets: z.boolean().optional(),
+  allowAnonymousTickets: z.boolean().optional(),
+  portalTitle: z.string().trim().max(100, 'Keep the title under 100 characters').nullish(),
+  portalMessage: z.string().trim().max(1000, 'Keep the message under 1,000 characters').nullish(),
+  brandColor: z
+    .string()
+    .regex(/^#[0-9a-f]{6}$/i, 'Use a hex colour such as #4f46e5')
+    .optional(),
+});
+export type CompanySettingsInput = z.infer<typeof companySettingsSchema>;
 
 // ---------------------------------------------------------------------------
 // Categories
@@ -148,8 +223,19 @@ export const createTicketSchema = z.object({
     .max(10_000, 'Description must be at most 10,000 characters'),
   priority: z.enum(TICKET_PRIORITIES).optional(),
   categoryId: objectIdSchema.nullish(),
+  /** Hide the requester's identity from the company (if the company allows it). */
+  isAnonymous: z.boolean().optional(),
 });
 export type CreateTicketInput = z.infer<typeof createTicketSchema>;
+
+/** A ticket from someone who isn't signed in; confirmed by an emailed link. */
+export const guestTicketSchema = createTicketSchema.extend({
+  email: emailSchema,
+  name: z.string().trim().max(80, 'Name must be at most 80 characters').optional(),
+  /** Honeypot: hidden from people, filled in by naive bots. */
+  website: z.string().max(200).optional(),
+});
+export type GuestTicketInput = z.infer<typeof guestTicketSchema>;
 
 export const updateTicketSchema = z
   .object({

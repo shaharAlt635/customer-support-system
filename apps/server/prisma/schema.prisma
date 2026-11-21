@@ -11,9 +11,23 @@ datasource db {
 }
 
 enum Role {
-  ADMIN
+  OWNER
   AGENT
   CUSTOMER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum NotificationType {
+  INVITATION
+  TICKET_ASSIGNED
+  TICKET_REPLY
+  TICKET_NOTE
 }
 
 enum TicketStatus {
@@ -31,6 +45,13 @@ enum TicketPriority {
   URGENT
 }
 
+enum TokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+  /// Passwordless sign-in (guests, and links in reply emails).
+  MAGIC_LOGIN
+}
+
 enum TicketEventType {
   CREATED
   STATUS_CHANGED
@@ -40,16 +61,56 @@ enum TicketEventType {
   SUBJECT_CHANGED
 }
 
+/// A tenant. Every account, category and ticket belongs to exactly one company.
+model Company {
+  id   String @id @default(auto()) @map("_id") @db.ObjectId
+  name String
+  /// URL identifier, e.g. `acme` in /acme/login.
+  slug String @unique
+
+  // Public ticket page (/acme): who may open tickets, and how the page looks.
+  /// Signed-in customers may open tickets (and visitors may create customer accounts).
+  allowAccountTickets   Boolean @default(true)
+  /// Visitors may open tickets with just a name and email (confirmed by email).
+  allowGuestTickets     Boolean @default(true)
+  /// Submitters may hide their identity from the company.
+  allowAnonymousTickets Boolean @default(false)
+  portalTitle           String?
+  portalMessage         String?
+  brandColor            String  @default("#4f46e5")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  categories  Category[]
+  tickets     Ticket[]
+  groups      PermissionGroup[]
+  invitations Invitation[]
+  submissions PendingSubmission[]
+
+  @@map("companies")
+}
+
+/// Accounts are scoped to a company: the same email can have separate accounts
+/// (and passwords) in different companies, but only one per company.
 model User {
-  id           String    @id @default(auto()) @map("_id") @db.ObjectId
-  email        String    @unique
-  name         String
-  passwordHash String
-  role         Role      @default(CUSTOMER)
-  isActive     Boolean   @default(true)
-  lastLoginAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              String           @id @default(auto()) @map("_id") @db.ObjectId
+  companyId       String           @db.ObjectId
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  email           String
+  name            String
+  /// Null for guest accounts created from the public ticket page (sign-in by email link).
+  passwordHash    String?
+  /// OWNER created the company (all permissions); AGENT permissions come from `group`.
+  role            Role             @default(CUSTOMER)
+  groupId         String?          @db.ObjectId
+  group           PermissionGroup? @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  isActive        Boolean          @default(true)
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   requestedTickets Ticket[]       @relation("TicketCustomer")
   assignedTickets  Ticket[]       @relation("TicketAssignee")
@@ -57,9 +118,87 @@ model User {
   attachments      Attachment[]
   events           TicketEvent[]
   refreshTokens    RefreshToken[]
+  tokens           UserToken[]
+  notifications    Notification[]
+  sentInvitations  Invitation[]   @relation("InvitationSender")
 
-  @@index([role, isActive])
+  @@unique([companyId, email])
+  @@index([companyId, role, isActive])
   @@map("users")
+}
+
+/// A named set of permissions the company assigns to agents.
+model PermissionGroup {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name        String
+  description String?
+  /// Permission keys, e.g. "tickets.reply" (see packages/shared/src/permissions.ts).
+  permissions String[]
+  /// Pre-selected when inviting new agents. One per company.
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     User[]
+  invitations Invitation[]
+
+  @@unique([companyId, name])
+  @@map("permission_groups")
+}
+
+/// An invitation for a user (by email) to join a company's team as an agent.
+model Invitation {
+  id          String           @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String           @db.ObjectId
+  company     Company          @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  email       String
+  groupId     String           @db.ObjectId
+  group       PermissionGroup  @relation(fields: [groupId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  invitedById String           @db.ObjectId
+  invitedBy   User             @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  status      InvitationStatus @default(PENDING)
+  expiresAt   DateTime
+  respondedAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([companyId, status])
+  @@index([companyId, email, status])
+  @@map("invitations")
+}
+
+/// In-app notification shown in the bell menu.
+model Notification {
+  id        String           @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String           @db.ObjectId
+  user      User             @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  type      NotificationType
+  title     String
+  body      String?
+  /// Path inside the company app, e.g. /tickets/<id>.
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// Single-use tokens sent by email (verification, password reset). Stored hashed.
+model UserToken {
+  id        String       @id @default(auto()) @map("_id") @db.ObjectId
+  userId    String       @db.ObjectId
+  user      User         @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  purpose   TokenPurpose
+  tokenHash String       @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  @@index([userId, purpose])
+  @@map("user_tokens")
 }
 
 /// Opaque refresh tokens (stored as SHA-256 hashes). Tokens issued from the same login
@@ -67,7 +206,7 @@ model User {
 model RefreshToken {
   id        String    @id @default(auto()) @map("_id") @db.ObjectId
   userId    String    @db.ObjectId
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   tokenHash String    @unique
   familyId  String
   expiresAt DateTime
@@ -83,7 +222,9 @@ model RefreshToken {
 
 model Category {
   id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  name        String   @unique
+  companyId   String   @db.ObjectId
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  name        String
   description String?
   color       String   @default("#6366f1")
   isActive    Boolean  @default(true)
@@ -92,19 +233,24 @@ model Category {
 
   tickets Ticket[]
 
+  @@unique([companyId, name])
   @@map("categories")
 }
 
 model Ticket {
   id              String         @id @default(auto()) @map("_id") @db.ObjectId
-  /// Human-friendly sequential number (e.g. #1042), generated from the `counters` collection.
-  number          Int            @unique
+  companyId       String         @db.ObjectId
+  company         Company        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  /// Human-friendly number (e.g. #1042), sequential per company via the `counters` collection.
+  number          Int
   subject         String
   description     String
   status          TicketStatus   @default(OPEN)
   priority        TicketPriority @default(MEDIUM)
   /// Mirrors `priority` as a number so the list can be sorted by urgency.
   priorityRank    Int            @default(2)
+  /// The requester chose to hide their identity: staff see "Anonymous", never the person.
+  isAnonymous     Boolean        @default(false)
   categoryId      String?        @db.ObjectId
   category        Category?      @relation(fields: [categoryId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   customerId      String         @db.ObjectId
@@ -122,13 +268,15 @@ model Ticket {
   attachments Attachment[]
   events      TicketEvent[]
 
-  @@index([status, lastActivityAt])
+  @@unique([companyId, number])
+  @@index([companyId, status, lastActivityAt])
+  @@index([companyId, lastActivityAt])
+  @@index([companyId, priorityRank, createdAt])
+  @@index([companyId, createdAt])
+  @@index([companyId, resolvedAt])
   @@index([customerId, lastActivityAt])
   @@index([assigneeId, status])
   @@index([categoryId])
-  @@index([priorityRank, createdAt])
-  @@index([createdAt])
-  @@index([resolvedAt])
   @@map("tickets")
 }
 
@@ -186,11 +334,50 @@ model TicketEvent {
   @@map("ticket_events")
 }
 
-/// Atomic sequences (currently only the ticket number).
-model Counter {
-  id   String @id @default(auto()) @map("_id") @db.ObjectId
-  name String @unique
-  seq  Int
+/// A ticket submitted from the public page by someone who isn't signed in. It only
+/// becomes a real ticket once the submitter clicks the confirmation link in their email.
+model PendingSubmission {
+  id          String         @id @default(auto()) @map("_id") @db.ObjectId
+  companyId   String         @db.ObjectId
+  company     Company        @relation(fields: [companyId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  email       String
+  name        String?
+  isAnonymous Boolean        @default(false)
+  subject     String
+  description String
+  priority    TicketPriority @default(MEDIUM)
+  categoryId  String?        @db.ObjectId
+  /// Uploaded files waiting to be attached: [{ fileName, mimeType, size, storageKey }].
+  files       Json
+  tokenHash   String         @unique
+  expiresAt   DateTime
+  createdAt   DateTime       @default(now())
 
+  @@index([expiresAt])
+  @@map("pending_submissions")
+}
+
+/// Atomic per-company sequences (currently only the ticket number).
+model Counter {
+  id        String @id @default(auto()) @map("_id") @db.ObjectId
+  companyId String @db.ObjectId
+  name      String
+  seq       Int
+
+  @@unique([companyId, name])
   @@map("counters")
+}
+
+/// Development-only outbox: when EMAIL_TRANSPORT=dev, emails are stored here instead of
+/// being sent, and can be read at /dev/mailbox in the web app.
+model DevEmail {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  to        String
+  subject   String
+  html      String
+  text      String
+  createdAt DateTime @default(now())
+
+  // Expired by a TTL index created at startup (see src/lib/db-maintenance.ts).
+  @@map("dev_emails")
 }

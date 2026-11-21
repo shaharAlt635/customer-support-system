@@ -1,13 +1,29 @@
-export const ROLES = ['ADMIN', 'AGENT', 'CUSTOMER'] as const;
+/**
+ * OWNER: created the company, has every permission and can't be removed.
+ * AGENT: team member whose permissions come from their permission group.
+ * CUSTOMER: opens and follows their own tickets.
+ */
+export const ROLES = ['OWNER', 'AGENT', 'CUSTOMER'] as const;
 export type Role = (typeof ROLES)[number];
 
-export const STAFF_ROLES: readonly Role[] = ['ADMIN', 'AGENT'];
+export const STAFF_ROLES: readonly Role[] = ['OWNER', 'AGENT'];
 
 export const ROLE_LABELS: Record<Role, string> = {
-  ADMIN: 'Admin',
+  OWNER: 'Owner',
   AGENT: 'Agent',
   CUSTOMER: 'Customer',
 };
+
+export const INVITATION_STATUSES = ['PENDING', 'ACCEPTED', 'DECLINED', 'REVOKED'] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+
+export const NOTIFICATION_TYPES = [
+  'INVITATION',
+  'TICKET_ASSIGNED',
+  'TICKET_REPLY',
+  'TICKET_NOTE',
+] as const;
+export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
 export const TICKET_STATUSES = [
   'OPEN',
@@ -88,6 +104,37 @@ export const ATTACHMENT_TYPES: Record<string, string> = {
   '.xls': 'application/vnd.ms-excel',
   '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
 };
+
+/** Company slugs that would collide with app routes. */
+export const RESERVED_SLUGS: readonly string[] = [
+  'about',
+  'admin',
+  'api',
+  'app',
+  'assets',
+  'companies',
+  'dashboard',
+  'dev',
+  'docs',
+  'find',
+  'forgot-password',
+  'help',
+  'login',
+  'logout',
+  'new',
+  'pricing',
+  'privacy',
+  'register',
+  'reset-password',
+  'settings',
+  'signup',
+  'static',
+  'status',
+  'support',
+  'terms',
+  'verify-email',
+  'www',
+];
 
 export const DEFAULT_MAX_UPLOAD_SIZE_MB = 10;
 export const DEFAULT_MAX_FILES_PER_UPLOAD = 5;

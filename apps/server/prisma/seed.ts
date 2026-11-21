@@ -1,6 +1,6 @@
 /**
- * Seeds a realistic demo dataset: staff and customer accounts, categories and ~40 tickets
- * with conversations, internal notes and history spread over the last six weeks.
+ * Seeds two demo companies, each with its own staff and customer accounts, categories and
+ * tickets (conversations, internal notes and history spread over the last six weeks).
  *
  *   npm run db:seed            # seed an empty database
  *   npm run db:seed -- --reset # wipe everything first
@@ -12,7 +12,7 @@ import {
   type TicketPriority,
   type TicketStatus,
 } from '@prisma/client';
-import { PRIORITY_RANK } from '@support-desk/shared';
+import { DEFAULT_GROUPS, PRIORITY_RANK } from '@support-desk/shared';
 import { hashPassword } from '../src/lib/password';
 import { TICKET_NUMBER_OFFSET, setTicketCounter } from '../src/modules/tickets/ticket-number';
 
@@ -38,10 +38,31 @@ function random(): number {
 const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!;
 const between = (min: number, max: number) => min + random() * (max - min);
 
-export const DEMO_ACCOUNTS: { name: string; email: string; role: Role; password: string }[] = [
-  { name: 'Avery Admin', email: 'admin@example.com', role: 'ADMIN', password: 'Admin123!' },
-  { name: 'Sam Rivera', email: 'agent@example.com', role: 'AGENT', password: 'Agent123!' },
-  { name: 'Jordan Lee', email: 'jordan.lee@example.com', role: 'AGENT', password: 'Agent123!' },
+interface DemoAccount {
+  name: string;
+  email: string;
+  role: Role;
+  password: string;
+  /** Permission group for agents. */
+  group?: string;
+}
+
+export const DEMO_ACCOUNTS: DemoAccount[] = [
+  { name: 'Avery Admin', email: 'admin@example.com', role: 'OWNER', password: 'Admin123!' },
+  {
+    name: 'Sam Rivera',
+    email: 'agent@example.com',
+    role: 'AGENT',
+    group: 'Agent',
+    password: 'Agent123!',
+  },
+  {
+    name: 'Jordan Lee',
+    email: 'jordan.lee@example.com',
+    role: 'AGENT',
+    group: 'Administrator',
+    password: 'Agent123!',
+  },
   {
     name: 'Casey Morgan',
     email: 'customer@example.com',
@@ -67,6 +88,29 @@ export const DEMO_ACCOUNTS: { name: string; email: string; role: Role; password:
     role: 'CUSTOMER',
     password: 'Customer123!',
   },
+];
+
+/**
+ * Globex reuses some of the same emails as Acme to show that accounts are per company:
+ * agent@example.com works at both, with a separate account (and password) in each.
+ */
+const GLOBEX_ACCOUNTS: DemoAccount[] = [
+  { name: 'Hank Scorpio', email: 'admin@example.com', role: 'OWNER', password: 'Admin123!' },
+  {
+    name: 'Sam Rivera',
+    email: 'agent@example.com',
+    role: 'AGENT',
+    group: 'Agent',
+    password: 'Agent123!',
+  },
+  {
+    name: 'Casey Morgan',
+    email: 'customer@example.com',
+    role: 'CUSTOMER',
+    password: 'Customer123!',
+  },
+  { name: 'Homer Simpson', email: 'homer@example.com', role: 'CUSTOMER', password: 'Customer123!' },
+  { name: 'Lenny Leonard', email: 'lenny@example.com', role: 'CUSTOMER', password: 'Customer123!' },
 ];
 
 const CATEGORIES = [
@@ -269,49 +313,129 @@ async function wipe() {
   await prisma.ticketEvent.deleteMany();
   await prisma.message.deleteMany();
   await prisma.ticket.deleteMany();
+  await prisma.pendingSubmission.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.invitation.deleteMany();
   await prisma.refreshToken.deleteMany();
+  await prisma.userToken.deleteMany();
   await prisma.category.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.permissionGroup.deleteMany();
   await prisma.counter.deleteMany();
+  await prisma.devEmail.deleteMany();
+  await prisma.company.deleteMany();
 }
 
-async function main() {
-  const reset = process.argv.includes('--reset');
+interface CompanySeed {
+  name: string;
+  slug: string;
+  accounts: DemoAccount[];
+  ticketCount: number;
+  /** Pending team invitations: an existing customer and someone without an account. */
+  invitations: { email: string; group: string }[];
+  /** Public ticket page settings. */
+  portal: Pick<
+    Prisma.CompanyCreateInput,
+    | 'allowAccountTickets'
+    | 'allowGuestTickets'
+    | 'allowAnonymousTickets'
+    | 'portalTitle'
+    | 'portalMessage'
+    | 'brandColor'
+  >;
+  /** Every n-th ticket is submitted anonymously (0 = none). */
+  anonymousEvery: number;
+}
 
-  if (reset) {
-    console.log('🧹 Wiping existing data…');
-    await wipe();
-  } else if ((await prisma.user.count()) > 0) {
-    console.log('ℹ️  Database already contains data. Run `npm run db:reset` to wipe and reseed.');
-    return;
-  }
+const COMPANIES: CompanySeed[] = [
+  {
+    name: 'Acme Inc.',
+    slug: 'acme',
+    accounts: DEMO_ACCOUNTS,
+    ticketCount: 42,
+    invitations: [
+      { email: 'priya.patel@example.com', group: 'Agent' },
+      { email: 'new.hire@example.com', group: 'Read-only' },
+    ],
+    portal: {
+      allowAccountTickets: true,
+      allowGuestTickets: true,
+      allowAnonymousTickets: true,
+      portalTitle: 'Hi, how can we help?',
+      portalMessage:
+        'Questions about billing, your account or something not working? Send us a request and our team usually replies within a few hours.',
+      brandColor: '#4f46e5',
+    },
+    anonymousEvery: 11,
+  },
+  {
+    name: 'Globex Corporation',
+    slug: 'globex',
+    accounts: GLOBEX_ACCOUNTS,
+    ticketCount: 14,
+    invitations: [],
+    // Globex only takes requests from customer accounts.
+    portal: {
+      allowAccountTickets: true,
+      allowGuestTickets: false,
+      allowAnonymousTickets: false,
+      portalTitle: 'Globex Customer Care',
+      brandColor: '#0f766e',
+    },
+    anonymousEvery: 0,
+  },
+];
 
-  console.log('👤 Creating users…');
+async function seedCompany(seed: CompanySeed) {
+  const company = await prisma.company.create({
+    data: { name: seed.name, slug: seed.slug, ...seed.portal },
+  });
+  const verifiedAt = new Date();
+
+  const groups = await Promise.all(
+    DEFAULT_GROUPS.map((group) =>
+      prisma.permissionGroup.create({
+        data: {
+          companyId: company.id,
+          name: group.name,
+          description: group.description,
+          permissions: [...group.permissions],
+          isDefault: group.isDefault,
+        },
+      }),
+    ),
+  );
+  const groupByName = new Map(groups.map((group) => [group.name, group]));
+
+  // Accounts are per company.
   const users = await Promise.all(
-    DEMO_ACCOUNTS.map(async (account) =>
+    seed.accounts.map(async (account) =>
       prisma.user.create({
         data: {
+          companyId: company.id,
           name: account.name,
           email: account.email,
           role: account.role,
+          groupId: account.group ? (groupByName.get(account.group)?.id ?? null) : null,
+          emailVerifiedAt: verifiedAt,
           passwordHash: await hashPassword(account.password),
           lastLoginAt: null,
         },
       }),
     ),
   );
-  const agents = users.filter((u) => u.role === 'AGENT' || u.role === 'ADMIN');
+  const agents = users.filter((u) => u.role === 'AGENT' || u.role === 'OWNER');
   const customers = users.filter((u) => u.role === 'CUSTOMER');
 
-  console.log('🏷️  Creating categories…');
-  const categories = await Promise.all(CATEGORIES.map((data) => prisma.category.create({ data })));
+  const categories = await Promise.all(
+    CATEGORIES.map((data) => prisma.category.create({ data: { ...data, companyId: company.id } })),
+  );
   const categoryByName = new Map(categories.map((c) => [c.name, c]));
 
-  console.log('🎫 Creating tickets…');
   const now = Date.now();
   const drafts: Prisma.TicketUncheckedCreateInput[] = [];
 
-  for (let i = 0; i < 42; i++) {
+  for (let i = 0; i < seed.ticketCount; i++) {
     const template = TEMPLATES[i % TEMPLATES.length]!;
     const customer = pick(customers);
     const status = pickStatus();
@@ -406,6 +530,8 @@ async function main() {
     );
 
     drafts.push({
+      companyId: company.id,
+      isAnonymous: seed.anonymousEvery > 0 && i % seed.anonymousEvery === seed.anonymousEvery - 1,
       number: 0,
       subject: template.subject,
       description: template.description,
@@ -431,15 +557,83 @@ async function main() {
     draft.number = TICKET_NUMBER_OFFSET + index + 1;
     await prisma.ticket.create({ data: draft });
   }
-  await setTicketCounter(prisma, TICKET_NUMBER_OFFSET + drafts.length);
+  await setTicketCounter(prisma, company.id, TICKET_NUMBER_OFFSET + drafts.length);
+
+  // Pending invitations from the owner, plus bell notifications for invitees with accounts.
+  const owner = users.find((u) => u.role === 'OWNER')!;
+  for (const invite of seed.invitations) {
+    await prisma.invitation.create({
+      data: {
+        companyId: company.id,
+        email: invite.email,
+        groupId: groupByName.get(invite.group)!.id,
+        invitedById: owner.id,
+        expiresAt: new Date(Date.now() + 14 * DAY),
+        respondedAt: null,
+      },
+    });
+    const invitee = users.find((u) => u.email === invite.email);
+    if (invitee) {
+      await prisma.notification.create({
+        data: {
+          userId: invitee.id,
+          type: 'INVITATION',
+          title: `${owner.name} invited you to join the ${company.name} team`,
+          link: '/invitations',
+          readAt: null,
+        },
+      });
+    }
+  }
+
+  // Assignment notifications for each agent's most recent active tickets.
+  const assigned = await prisma.ticket.findMany({
+    where: {
+      companyId: company.id,
+      assigneeId: { not: null },
+      status: { in: ['OPEN', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER'] },
+    },
+    orderBy: { lastActivityAt: 'desc' },
+    take: 8,
+  });
+  for (const [index, ticket] of assigned.entries()) {
+    await prisma.notification.create({
+      data: {
+        userId: ticket.assigneeId!,
+        type: 'TICKET_ASSIGNED',
+        title: `You were assigned #${ticket.number} ${ticket.subject}`,
+        link: `/tickets/${ticket.id}`,
+        readAt: index < 3 ? null : ticket.lastActivityAt,
+        createdAt: ticket.lastActivityAt,
+      },
+    });
+  }
 
   console.log(
-    `✅ Seeded ${users.length} users, ${categories.length} categories and ${drafts.length} tickets.\n`,
+    `🏢 ${seed.name} (/${seed.slug}): ${users.length} users, ${categories.length} categories, ${drafts.length} tickets`,
   );
-  console.log('Demo accounts:');
+}
+
+async function main() {
+  const reset = process.argv.includes('--reset');
+
+  if (reset) {
+    console.log('🧹 Wiping existing data…');
+    await wipe();
+  } else if ((await prisma.company.count()) > 0) {
+    console.log('ℹ️  Database already contains data. Run `npm run db:reset` to wipe and reseed.');
+    return;
+  }
+
+  for (const company of COMPANIES) await seedCompany(company);
+
+  console.log('\n✅ Done. Each company has its own accounts with these demo logins:');
   console.table(
-    DEMO_ACCOUNTS.slice(0, 4).map(({ role, email, password }) => ({ role, email, password })),
+    DEMO_ACCOUNTS.filter((a) => /^(admin|agent|customer)@/.test(a.email)).map(
+      ({ role, email, password }) => ({ role, email, password }),
+    ),
   );
+  console.log('Sign in at http://localhost:5173/acme/login or http://localhost:5173/globex/login');
 }
 
 main()
