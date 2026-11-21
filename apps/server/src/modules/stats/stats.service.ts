@@ -5,10 +5,11 @@ import {
   type StatsOverviewDTO,
   TICKET_PRIORITIES,
   TICKET_STATUSES,
-  hasPermission,
+  isStaff,
 } from '@support-desk/shared';
 import { ejsonDate, ejsonNumber, ejsonObjectId } from '../../lib/ejson';
 import type { AuthUser } from '../../types';
+import { can } from '../tickets/ticket.policy';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const UNCATEGORIZED_COLOR = '#94a3b8';
@@ -23,15 +24,21 @@ export class StatsService {
   constructor(private readonly prisma: PrismaClient) {}
 
   /**
-   * Dashboard numbers. Staff see the whole organisation; customers see their own tickets.
-   * Day buckets are calculated in UTC.
+   * Dashboard numbers for the user's company. With "company-wide reports" the whole
+   * company; otherwise agents see the tickets assigned to them and customers the tickets
+   * they opened. Day buckets are calculated in UTC.
    */
   async overview(user: AuthUser, days: number): Promise<StatsOverviewDTO> {
-    const organization = hasPermission(user.role, PERMISSIONS.STATS_VIEW_ALL);
-    const scope: Prisma.TicketWhereInput = organization ? {} : { customerId: user.id };
-    const rawScope: Prisma.InputJsonObject = organization
-      ? {}
-      : { customerId: ejsonObjectId(user.id) };
+    const organization = can(user, PERMISSIONS.REPORTS_VIEW);
+    const personalField = isStaff(user.role) ? 'assigneeId' : 'customerId';
+    const scope: Prisma.TicketWhereInput = {
+      companyId: user.companyId,
+      ...(organization ? {} : { [personalField]: user.id }),
+    };
+    const rawScope: Prisma.InputJsonObject = {
+      companyId: ejsonObjectId(user.companyId),
+      ...(organization ? {} : { [personalField]: ejsonObjectId(user.id) }),
+    };
     const since = startOfUtcDay(new Date(Date.now() - (days - 1) * DAY_MS));
     const activeStatus = { in: [...ACTIVE_STATUSES] };
 
@@ -62,7 +69,7 @@ export class StatsService {
       this.dailyCounts('createdAt', since, rawScope),
       this.dailyCounts('resolvedAt', since, rawScope),
       this.averageTimings(since, rawScope),
-      organization ? this.agentWorkload(since) : Promise.resolve([]),
+      organization ? this.agentWorkload(user.companyId, since) : Promise.resolve([]),
     ]);
 
     const statusCounts = new Map(byStatusRows.map((row) => [row.status, row._count._all]));
@@ -163,20 +170,20 @@ export class StatsService {
     };
   }
 
-  private async agentWorkload(since: Date) {
+  private async agentWorkload(companyId: string, since: Date) {
     const [activeRows, resolvedRows, staff] = await Promise.all([
       this.prisma.ticket.groupBy({
         by: ['assigneeId'],
-        where: { status: { in: [...ACTIVE_STATUSES] }, assigneeId: { not: null } },
+        where: { companyId, status: { in: [...ACTIVE_STATUSES] }, assigneeId: { not: null } },
         _count: { _all: true },
       }),
       this.prisma.ticket.groupBy({
         by: ['assigneeId'],
-        where: { resolvedAt: { gte: since }, assigneeId: { not: null } },
+        where: { companyId, resolvedAt: { gte: since }, assigneeId: { not: null } },
         _count: { _all: true },
       }),
       this.prisma.user.findMany({
-        where: { role: { in: ['ADMIN', 'AGENT'] }, isActive: true },
+        where: { companyId, role: { in: ['OWNER', 'AGENT'] }, isActive: true },
         select: { id: true, name: true },
       }),
     ]);

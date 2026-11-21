@@ -1,20 +1,20 @@
 import type { PrismaClient } from '@prisma/client';
-import { ejsonNumber } from '../../lib/ejson';
+import { ejsonNumber, ejsonObjectId } from '../../lib/ejson';
 
 /** Ticket numbers start at #1001 so they look established from day one. */
 export const TICKET_NUMBER_OFFSET = 1000;
 const COUNTER_NAME = 'ticket';
 
 /**
- * Atomically reserve the next ticket number using MongoDB's `findAndModify` with `$inc`,
- * which is safe under concurrent requests (unlike a read-then-write).
+ * Atomically reserve a company's next ticket number using MongoDB's `findAndModify` with
+ * `$inc`, which is safe under concurrent requests (unlike a read-then-write).
  */
-export async function nextTicketNumber(prisma: PrismaClient): Promise<number> {
+export async function nextTicketNumber(prisma: PrismaClient, companyId: string): Promise<number> {
   for (let attempt = 1; ; attempt++) {
     try {
       const result = (await prisma.$runCommandRaw({
         findAndModify: 'counters',
-        query: { name: COUNTER_NAME },
+        query: { companyId: ejsonObjectId(companyId), name: COUNTER_NAME },
         update: { $inc: { seq: 1 } },
         new: true,
         upsert: true,
@@ -31,13 +31,17 @@ export async function nextTicketNumber(prisma: PrismaClient): Promise<number> {
   }
 }
 
-/** Ensure the counter is at least `TICKET_NUMBER_OFFSET + seq` (used by the seed script). */
-export async function setTicketCounter(prisma: PrismaClient, lastNumber: number): Promise<void> {
+/** Ensure a company's counter is at least `lastNumber` (used by the seed script). */
+export async function setTicketCounter(
+  prisma: PrismaClient,
+  companyId: string,
+  lastNumber: number,
+): Promise<void> {
   await prisma.$runCommandRaw({
     update: 'counters',
     updates: [
       {
-        q: { name: COUNTER_NAME },
+        q: { companyId: ejsonObjectId(companyId), name: COUNTER_NAME },
         u: { $max: { seq: lastNumber - TICKET_NUMBER_OFFSET } },
         upsert: true,
       },

@@ -131,3 +131,16 @@ export async function withUploadCleanup<T>(
     throw error;
   }
 }
+
+const BOOLEAN_FORM_FIELDS = new Set(['isInternal', 'isAnonymous']);
+
+/** Multipart form fields arrive as strings; convert them to the JSON shapes the schemas expect. */
+export function normalizeFormFields(body: unknown, isMultipart: boolean): unknown {
+  if (!isMultipart || typeof body !== 'object' || body === null) return body;
+  const fields: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(body as Record<string, string>)) {
+    if (value === '') continue;
+    fields[key] = BOOLEAN_FORM_FIELDS.has(key) ? value === 'true' : value;
+  }
+  return fields;
+}

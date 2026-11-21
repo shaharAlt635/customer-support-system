@@ -26,7 +26,7 @@ export class AttachmentService {
     const attachment = await this.prisma.attachment.findUnique({
       where: { id },
       include: {
-        ticket: { select: { customerId: true } },
+        ticket: { select: { companyId: true, customerId: true, assigneeId: true } },
         message: { select: { isInternal: true } },
       },
     });
