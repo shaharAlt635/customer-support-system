@@ -5,7 +5,6 @@ import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
-import fastifyStatic from '@fastify/static';
 import { PrismaClient } from '@prisma/client';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import { type AppConfig, loadConfig } from './config/env';
@@ -162,6 +161,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   // --- Optional: serve the built React app from the same origin ----------
   if (serveWeb) {
+    // Loaded only when needed: hosts that serve the web app themselves (e.g. Vercel) never
+    // load it, and its dependencies need a Node.js that can require() ES modules.
+    const { default: fastifyStatic } = await import('@fastify/static');
     await app.register(fastifyStatic, {
       root: webRoot,
       wildcard: true,
