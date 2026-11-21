@@ -1,2 +1,3 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+# Auto detect text files, normalise to LF in the repository and keep LF on checkout
+# (Prettier expects LF, so Windows checkouts must not switch to CRLF).
+* text=auto eol=lf
