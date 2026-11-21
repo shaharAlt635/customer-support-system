@@ -25,6 +25,7 @@ import {
 } from '../features/tickets/TicketFilters';
 import { TicketTable } from '../features/tickets/TicketTable';
 import { useDocumentTitle } from '../lib/hooks';
+import { useCompanyPath } from '../company/company-context';
 
 const PAGE_SIZE = 15;
 
@@ -65,6 +66,7 @@ function toApiParams(filters: ReturnType<typeof readFilters>): TicketListParams 
 }
 
 export default function TicketsPage() {
+  const companyPath = useCompanyPath();
   const user = useCurrentUser();
   const isStaff = user.role !== 'CUSTOMER';
   const [searchParams, setSearchParams] = useSearchParams();
@@ -104,7 +106,7 @@ export default function TicketsPage() {
         }
         actions={
           <Link
-            to="/tickets/new"
+            to={companyPath('/tickets/new')}
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-3.5 text-sm font-medium text-white shadow-sm hover:bg-brand-700"
           >
             <Plus className="size-4" aria-hidden />
@@ -138,7 +140,7 @@ export default function TicketsPage() {
             action={
               !hasFilters && (
                 <Link
-                  to="/tickets/new"
+                  to={companyPath('/tickets/new')}
                   className="inline-flex h-9 items-center gap-2 rounded-lg bg-brand-600 px-3.5 text-sm font-medium text-white hover:bg-brand-700"
                 >
                   <Plus className="size-4" aria-hidden /> Create a ticket

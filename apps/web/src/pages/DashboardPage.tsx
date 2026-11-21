@@ -29,6 +29,7 @@ import { PriorityBadge, StatusBadge } from '../features/tickets/badges';
 import { cn } from '../lib/cn';
 import { formatDuration, formatRelative } from '../lib/format';
 import { useDocumentTitle } from '../lib/hooks';
+import { useCompanyPath } from '../company/company-context';
 
 const PERIODS = [7, 30, 90] as const;
 
@@ -114,6 +115,7 @@ function DashboardSkeleton() {
 }
 
 function RecentTickets({ isStaff }: { isStaff: boolean }) {
+  const companyPath = useCompanyPath();
   const { data, isPending } = useTickets(
     isStaff
       ? { assigneeId: 'me', status: [...ACTIVE_STATUSES], sort: 'priority', pageSize: 6 }
@@ -129,7 +131,9 @@ function RecentTickets({ isStaff }: { isStaff: boolean }) {
         }
         actions={
           <Link
-            to={isStaff ? '/tickets?assigneeId=me&status=active&sort=priority' : '/tickets'}
+            to={companyPath(
+              isStaff ? '/tickets?assigneeId=me&status=active&sort=priority' : '/tickets',
+            )}
             className="text-xs font-medium text-brand-600 hover:text-brand-800"
           >
             View all
@@ -153,7 +157,9 @@ function RecentTickets({ isStaff }: { isStaff: boolean }) {
           }
           action={
             <Link
-              to={isStaff ? '/tickets?assigneeId=unassigned&status=active' : '/tickets/new'}
+              to={companyPath(
+                isStaff ? '/tickets?assigneeId=unassigned&status=active' : '/tickets/new',
+              )}
               className="inline-flex h-8 items-center gap-1.5 rounded-md bg-brand-50 px-3 text-xs font-medium text-brand-700 hover:bg-brand-100"
             >
               {isStaff ? (
@@ -172,7 +178,7 @@ function RecentTickets({ isStaff }: { isStaff: boolean }) {
           {data.data.map((ticket) => (
             <li key={ticket.id}>
               <Link
-                to={`/tickets/${ticket.id}`}
+                to={companyPath(`/tickets/${ticket.id}`)}
                 className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50"
               >
                 <div className="min-w-0 flex-1">
@@ -194,6 +200,7 @@ function RecentTickets({ isStaff }: { isStaff: boolean }) {
 }
 
 function AgentWorkload({ stats }: { stats: StatsOverviewDTO }) {
+  const companyPath = useCompanyPath();
   return (
     <Card>
       <CardHeader
@@ -226,7 +233,7 @@ function AgentWorkload({ stats }: { stats: StatsOverviewDTO }) {
                 </td>
                 <td className="px-5 py-2.5 text-right font-medium text-slate-900 tabular-nums">
                   <Link
-                    to={`/tickets?assigneeId=${agent.id}&status=active`}
+                    to={companyPath(`/tickets?assigneeId=${agent.id}&status=active`)}
                     className="hover:text-brand-700"
                   >
                     {agent.active}
@@ -245,6 +252,7 @@ function AgentWorkload({ stats }: { stats: StatsOverviewDTO }) {
 }
 
 export default function DashboardPage() {
+  const companyPath = useCompanyPath();
   const user = useCurrentUser();
   const isStaff = user.role !== 'CUSTOMER';
   const [days, setDays] = useState<number>(30);
@@ -260,7 +268,9 @@ export default function DashboardPage() {
         title={`${greeting()}, ${firstName}`}
         description={
           isStaff
-            ? "Here's what's happening across the help desk."
+            ? stats?.scope === 'personal'
+              ? 'An overview of the tickets assigned to you.'
+              : "Here's what's happening across the help desk."
             : 'An overview of your support requests.'
         }
         actions={<PeriodPicker value={days} onChange={setDays} />}
@@ -280,7 +290,7 @@ export default function DashboardPage() {
               value={stats.totals.active}
               icon={Inbox}
               hint={`${stats.totals.total} total`}
-              to="/tickets?status=active"
+              to={companyPath('/tickets?status=active')}
             />
             {isStaff ? (
               <StatTile
@@ -288,7 +298,7 @@ export default function DashboardPage() {
                 value={stats.totals.unassigned}
                 icon={UserX}
                 hint="Active tickets without an owner"
-                to="/tickets?assigneeId=unassigned&status=active"
+                to={companyPath('/tickets?assigneeId=unassigned&status=active')}
               />
             ) : (
               <StatTile
@@ -296,7 +306,7 @@ export default function DashboardPage() {
                 value={waitingOnMe}
                 icon={Clock}
                 hint="Our team needs more information"
-                to="/tickets?status=WAITING_ON_CUSTOMER"
+                to={companyPath('/tickets?status=WAITING_ON_CUSTOMER')}
               />
             )}
             <StatTile

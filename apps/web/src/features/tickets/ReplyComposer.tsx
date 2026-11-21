@@ -21,12 +21,16 @@ type Mode = 'reply' | 'note';
 const KEEP = 'keep';
 
 export function ReplyComposer({ ticket }: { ticket: TicketDetailDTO }) {
-  const { can } = useAuth();
-  const canWriteNotes = can(PERMISSIONS.NOTE_INTERNAL);
-  const canChangeStatus = can(PERMISSIONS.TICKET_UPDATE);
+  const { can, user } = useAuth();
+  const isRequester = ticket.customer.id === user?.id;
+  const canWriteNotes = can(PERMISSIONS.TICKETS_INTERNAL_NOTES);
+  // Requesters can always answer on their own ticket; staff need the reply permission.
+  const canReply = isRequester || can(PERMISSIONS.TICKETS_REPLY);
+  const canChangeStatus = can(PERMISSIONS.TICKETS_CHANGE_STATUS);
   const isClosed = ticket.status === 'CLOSED';
 
-  const [mode, setMode] = useState<Mode>('reply');
+  const [chosenMode, setMode] = useState<Mode>('reply');
+  const mode: Mode = canReply ? chosenMode : 'note';
   const [body, setBody] = useState('');
   const [files, setFiles] = useState<File[]>([]);
   const [selectedStatus, setNextStatus] = useState<string>(KEEP);
@@ -37,7 +41,23 @@ export function ReplyComposer({ ticket }: { ticket: TicketDetailDTO }) {
   const reply = useReplyToTicket(ticket.id);
   const reopen = useUpdateTicket(ticket.id);
 
+  if (!canReply && !canWriteNotes) {
+    return (
+      <Card className="p-5 text-sm text-slate-500">
+        You can follow this ticket, but your permission group doesn&apos;t allow replies or notes.
+      </Card>
+    );
+  }
+
   if (isClosed && !canChangeStatus) {
+    if (!isRequester) {
+      return (
+        <Card className="p-5 text-sm text-slate-500">
+          This ticket is closed. Only the requester or someone allowed to change the status can
+          reopen it.
+        </Card>
+      );
+    }
     return (
       <Card className="flex flex-col items-start gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -102,7 +122,7 @@ export function ReplyComposer({ ticket }: { ticket: TicketDetailDTO }) {
   return (
     <Card className={cn('overflow-hidden', isNote && 'ring-amber-300')}>
       <form onSubmit={submit}>
-        {canWriteNotes && (
+        {canWriteNotes && canReply && (
           <div
             role="tablist"
             className="flex border-b border-slate-100 px-2"

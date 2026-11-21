@@ -4,6 +4,7 @@ import { Link, useNavigate } from 'react-router';
 import { Avatar } from '../../components/ui/Avatar';
 import { formatRelative } from '../../lib/format';
 import { CategoryTag, PriorityBadge, StatusBadge } from './badges';
+import { useCompanyPath } from '../../company/company-context';
 
 interface TicketTableProps {
   tickets: TicketSummaryDTO[];
@@ -21,6 +22,7 @@ function Assignee({ ticket }: { ticket: TicketSummaryDTO }) {
 }
 
 export function TicketTable({ tickets, showCustomer }: TicketTableProps) {
+  const companyPath = useCompanyPath();
   const navigate = useNavigate();
 
   return (
@@ -56,12 +58,12 @@ export function TicketTable({ tickets, showCustomer }: TicketTableProps) {
             {tickets.map((ticket) => (
               <tr
                 key={ticket.id}
-                onClick={() => navigate(`/tickets/${ticket.id}`)}
+                onClick={() => navigate(companyPath(`/tickets/${ticket.id}`))}
                 className="cursor-pointer transition-colors hover:bg-slate-50"
               >
                 <td className="max-w-md px-4 py-3">
                   <Link
-                    to={`/tickets/${ticket.id}`}
+                    to={companyPath(`/tickets/${ticket.id}`)}
                     onClick={(event) => event.stopPropagation()}
                     className="block truncate font-medium text-slate-900 hover:text-brand-700"
                   >
@@ -110,7 +112,10 @@ export function TicketTable({ tickets, showCustomer }: TicketTableProps) {
       <ul className="divide-y divide-slate-100 md:hidden">
         {tickets.map((ticket) => (
           <li key={ticket.id}>
-            <Link to={`/tickets/${ticket.id}`} className="block px-4 py-3.5 active:bg-slate-50">
+            <Link
+              to={companyPath(`/tickets/${ticket.id}`)}
+              className="block px-4 py-3.5 active:bg-slate-50"
+            >
               <div className="flex items-start justify-between gap-3">
                 <p className="min-w-0 font-medium text-slate-900">{ticket.subject}</p>
                 <StatusBadge status={ticket.status} className="shrink-0" />

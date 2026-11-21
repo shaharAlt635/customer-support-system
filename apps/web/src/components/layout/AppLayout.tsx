@@ -1,6 +1,8 @@
 import { PERMISSIONS, ROLE_LABELS } from '@support-desk/shared';
 import {
+  Building2,
   ChevronDown,
+  Contact,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
@@ -8,8 +10,10 @@ import {
   Menu,
   Plus,
   Search,
+  ShieldCheck,
   Tags,
   Ticket,
+  UserPlus,
   UserRound,
   Users,
   X,
@@ -20,41 +24,83 @@ import { useAuth, useCurrentUser } from '../../auth/auth-context';
 import { cn } from '../../lib/cn';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { useCompany, useCompanyPath } from '../../company/company-context';
+import { useMyInvitations } from '../../api/queries';
+import { NotificationBell } from './NotificationBell';
 
 interface NavItem {
   to: string;
   label: string;
   icon: LucideIcon;
   end?: boolean;
+  badge?: number;
 }
 
 function useNavigation() {
-  const { can } = useAuth();
+  const companyPath = useCompanyPath();
+  const { can, canAny } = useAuth();
   const user = useCurrentUser();
+  const { data: invitations = [] } = useMyInvitations();
+  const when = (condition: boolean, item: NavItem) => (condition ? [item] : []);
+
   const main: NavItem[] = [
-    { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
+    { to: companyPath('/dashboard'), label: 'Dashboard', icon: LayoutDashboard, end: true },
     {
-      to: '/tickets',
+      to: companyPath('/tickets'),
       label: user.role === 'CUSTOMER' ? 'My tickets' : 'Tickets',
       icon: Ticket,
     },
+    ...when(can(PERMISSIONS.CUSTOMERS_MANAGE), {
+      to: companyPath('/customers'),
+      label: 'Customers',
+      icon: Contact,
+    }),
+    ...when(invitations.length > 0, {
+      to: companyPath('/invitations'),
+      label: 'Invitations',
+      icon: UserPlus,
+      badge: invitations.length,
+    }),
   ];
-  const admin: NavItem[] = [
-    ...(can(PERMISSIONS.USER_MANAGE) ? [{ to: '/admin/users', label: 'Users', icon: Users }] : []),
-    ...(can(PERMISSIONS.CATEGORY_MANAGE)
-      ? [{ to: '/admin/categories', label: 'Categories', icon: Tags }]
-      : []),
+  const settings: NavItem[] = [
+    ...when(canAny(PERMISSIONS.TEAM_INVITE, PERMISSIONS.TEAM_MANAGE), {
+      to: companyPath('/settings/team'),
+      label: 'Team',
+      icon: Users,
+    }),
+    ...when(can(PERMISSIONS.GROUPS_MANAGE), {
+      to: companyPath('/settings/groups'),
+      label: 'Permission groups',
+      icon: ShieldCheck,
+    }),
+    ...when(can(PERMISSIONS.CATEGORIES_MANAGE), {
+      to: companyPath('/settings/categories'),
+      label: 'Categories',
+      icon: Tags,
+    }),
+    ...when(can(PERMISSIONS.COMPANY_SETTINGS), {
+      to: companyPath('/settings/company'),
+      label: 'Company',
+      icon: Building2,
+    }),
   ];
-  return { main, admin };
+  return { main, settings };
 }
 
 function Brand() {
+  const companyPath = useCompanyPath();
+  const company = useCompany();
   return (
-    <Link to="/" className="flex items-center gap-2.5 px-2">
-      <span className="flex size-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm">
+    <Link to={companyPath('/dashboard')} className="flex min-w-0 items-center gap-2.5 px-2">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white shadow-sm">
         <LifeBuoy className="size-5" aria-hidden />
       </span>
-      <span className="text-base font-semibold tracking-tight text-slate-900">Support Desk</span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm leading-tight font-semibold text-slate-900">
+          {company.name}
+        </span>
+        <span className="block text-[11px] leading-tight text-slate-500">Support Desk</span>
+      </span>
     </Link>
   );
 }
@@ -69,7 +115,7 @@ function NavSection({ items, title }: { items: NavItem[]; title?: string }) {
         </p>
       )}
       <ul className="space-y-0.5">
-        {items.map(({ to, label, icon: Icon, end }) => (
+        {items.map(({ to, label, icon: Icon, end, badge }) => (
           <li key={to}>
             <NavLink
               to={to}
@@ -84,7 +130,12 @@ function NavSection({ items, title }: { items: NavItem[]; title?: string }) {
               }
             >
               <Icon className="size-[18px] shrink-0" aria-hidden />
-              {label}
+              <span className="flex-1">{label}</span>
+              {badge ? (
+                <span className="rounded-full bg-brand-600 px-1.5 text-[11px] leading-5 font-semibold text-white">
+                  {badge}
+                </span>
+              ) : null}
             </NavLink>
           </li>
         ))}
@@ -94,12 +145,13 @@ function NavSection({ items, title }: { items: NavItem[]; title?: string }) {
 }
 
 function SidebarContent() {
-  const { main, admin } = useNavigation();
+  const companyPath = useCompanyPath();
+  const { main, settings } = useNavigation();
   return (
     <div className="flex h-full flex-col gap-6 px-3 py-5">
       <Brand />
       <Link
-        to="/tickets/new"
+        to={companyPath('/tickets/new')}
         className="flex h-9 items-center justify-center gap-2 rounded-lg bg-brand-600 text-sm font-medium text-white shadow-sm transition hover:bg-brand-700"
       >
         <Plus className="size-4" aria-hidden />
@@ -107,13 +159,14 @@ function SidebarContent() {
       </Link>
       <nav className="flex flex-1 flex-col gap-6" aria-label="Main">
         <NavSection items={main} />
-        <NavSection items={admin} title="Administration" />
+        <NavSection items={settings} title="Settings" />
       </nav>
     </div>
   );
 }
 
 function UserMenu() {
+  const companyPath = useCompanyPath();
   const user = useCurrentUser();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -149,7 +202,7 @@ function UserMenu() {
             {user.name}
           </span>
           <span className="block text-xs leading-tight text-slate-500">
-            {ROLE_LABELS[user.role]}
+            {user.role === 'AGENT' && user.group ? user.group.name : ROLE_LABELS[user.role]}
           </span>
         </span>
         <ChevronDown className="hidden size-4 text-slate-400 sm:block" aria-hidden />
@@ -169,7 +222,7 @@ function UserMenu() {
             className="flex w-full items-center gap-2.5 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
             onClick={() => {
               setOpen(false);
-              navigate('/profile');
+              navigate(companyPath('/profile'));
             }}
           >
             <UserRound className="size-4 text-slate-400" aria-hidden />
@@ -190,13 +243,14 @@ function UserMenu() {
 }
 
 function GlobalSearch() {
+  const companyPath = useCompanyPath();
   const navigate = useNavigate();
   const [value, setValue] = useState('');
 
   const onSubmit = (event: FormEvent) => {
     event.preventDefault();
     const q = value.trim();
-    navigate(q ? `/tickets?q=${encodeURIComponent(q)}` : '/tickets');
+    navigate(companyPath(q ? `/tickets?q=${encodeURIComponent(q)}` : '/tickets'));
     setValue('');
   };
 
@@ -266,6 +320,7 @@ export function AppLayout() {
           <div className="flex flex-1 justify-start">
             <GlobalSearch />
           </div>
+          <NotificationBell />
           <UserMenu />
         </header>
 

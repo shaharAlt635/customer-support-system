@@ -1,7 +1,12 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { PRIORITY_LABELS, TICKET_PRIORITIES, createTicketSchema } from '@support-desk/shared';
+import {
+  PRIORITY_LABELS,
+  TICKET_PRIORITIES,
+  createTicketSchema,
+  isStaff,
+} from '@support-desk/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, EyeOff } from 'lucide-react';
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router';
@@ -17,11 +22,14 @@ import { Input, Select, Textarea } from '../components/ui/Input';
 import { PageHeader } from '../components/ui/PageHeader';
 import { handleFormError } from '../lib/form-errors';
 import { useDocumentTitle } from '../lib/hooks';
+import { useCurrentUser } from '../auth/auth-context';
+import { useCompany, useCompanyPath } from '../company/company-context';
 
 // Same rules as the API, adapted to form controls (selects always produce strings).
 const formSchema = createTicketSchema.extend({
   priority: z.enum(TICKET_PRIORITIES),
   categoryId: z.string(),
+  isAnonymous: z.boolean(),
 });
 type FormValues = z.infer<typeof formSchema>;
 
@@ -33,6 +41,10 @@ const PRIORITY_HINTS: Record<(typeof TICKET_PRIORITIES)[number], string> = {
 };
 
 export default function NewTicketPage() {
+  const companyPath = useCompanyPath();
+  const company = useCompany();
+  const user = useCurrentUser();
+  const customer = !isStaff(user.role);
   useDocumentTitle('New ticket');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -47,29 +59,54 @@ export default function NewTicketPage() {
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(formSchema),
-    defaultValues: { subject: '', description: '', priority: 'MEDIUM', categoryId: '' },
+    defaultValues: {
+      subject: '',
+      description: '',
+      priority: 'MEDIUM',
+      categoryId: '',
+      isAnonymous: false,
+    },
   });
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) =>
-      ticketsApi.create({ ...values, categoryId: values.categoryId || undefined }, files),
+      ticketsApi.create(
+        {
+          ...values,
+          categoryId: values.categoryId || undefined,
+          isAnonymous: values.isAnonymous || undefined,
+        },
+        files,
+      ),
     onSuccess: (ticket) => {
       void queryClient.invalidateQueries({ queryKey: ['tickets'] });
       void queryClient.invalidateQueries({ queryKey: ['stats'] });
       toast.success(`Ticket #${ticket.number} created`);
-      navigate(`/tickets/${ticket.id}`);
+      navigate(companyPath(`/tickets/${ticket.id}`));
     },
     onError: (error) =>
       handleFormError(error, setError, ['subject', 'description', 'priority', 'categoryId']),
   });
 
   const priority = useWatch({ control, name: 'priority' });
+
   const description = useWatch({ control, name: 'description' });
+
+  if (customer && !company.allowAccountTickets) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <PageHeader
+          title="Create a ticket"
+          description={`${company.name} isn't taking new requests online right now. You can still follow your existing tickets.`}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-3xl">
       <Link
-        to="/tickets"
+        to={companyPath('/tickets')}
         className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"
       >
         <ArrowLeft className="size-4" aria-hidden /> Back to tickets
@@ -144,6 +181,24 @@ export default function NewTicketPage() {
               <p className="text-sm font-medium text-slate-700">Attachments</p>
               <FilePicker files={files} onChange={setFiles} disabled={mutation.isPending} />
             </div>
+
+            {customer && company.allowAnonymousTickets && (
+              <label className="flex items-start gap-3 rounded-lg bg-slate-50 p-3 text-sm ring-1 ring-slate-200">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-4 rounded border-slate-300"
+                  {...register('isAnonymous')}
+                />
+                <span>
+                  <span className="flex items-center gap-1.5 font-medium text-slate-800">
+                    <EyeOff className="size-4 text-slate-400" aria-hidden /> Submit anonymously
+                  </span>
+                  <span className="block text-xs text-slate-500">
+                    The {company.name} team won&apos;t see your name or email.
+                  </span>
+                </span>
+              </label>
+            )}
           </CardContent>
 
           <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-4 sm:flex-row sm:justify-end sm:rounded-b-xl">

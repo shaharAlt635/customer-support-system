@@ -8,17 +8,22 @@ import { Conversation } from '../features/tickets/Conversation';
 import { ReplyComposer } from '../features/tickets/ReplyComposer';
 import { TicketProperties } from '../features/tickets/TicketProperties';
 import { CategoryTag, PriorityBadge, StatusBadge } from '../features/tickets/badges';
+import { AnonymousNotice } from '../features/tickets/AnonymousNotice';
+import { useAuth } from '../auth/auth-context';
 import { formatRelative } from '../lib/format';
 import { useDocumentTitle } from '../lib/hooks';
+import { useCompanyPath } from '../company/company-context';
 
 export default function TicketDetailPage() {
+  const companyPath = useCompanyPath();
   const { id = '' } = useParams();
   const { data: ticket, isPending, isError, error, refetch } = useTicket(id);
+  const { user } = useAuth();
   useDocumentTitle(ticket ? `#${ticket.number} ${ticket.subject}` : 'Ticket');
 
   const backLink = (
     <Link
-      to="/tickets"
+      to={companyPath('/tickets')}
       className="mb-4 inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800"
     >
       <ArrowLeft className="size-4" aria-hidden /> All tickets
@@ -63,6 +68,8 @@ export default function TicketDetailPage() {
           {formatRelative(ticket.lastActivityAt)}
         </p>
       </header>
+
+      {ticket.isAnonymous && <AnonymousNotice isRequester={ticket.customer.id === user?.id} />}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <section aria-label="Conversation" className="min-w-0 space-y-6">
