@@ -33,7 +33,21 @@ const envSchema = z.object({
   COOKIE_SECURE: booleanFlag,
   COOKIE_SAME_SITE: z.enum(['strict', 'lax', 'none']).default('strict'),
   TRUST_PROXY: booleanFlag,
+  /** Let visitors create new companies from /signup. */
+  ALLOW_COMPANY_SIGNUP: booleanFlag,
+  /** Let visitors register customer accounts on a company's page. */
   ALLOW_REGISTRATION: booleanFlag,
+
+  /** Public URL of the web app, used to build links in emails. */
+  APP_URL: z.url().default('http://localhost:5173'),
+  /** `smtp` sends real email; `dev` stores emails in the database for /dev/mailbox. */
+  EMAIL_TRANSPORT: z.enum(['smtp', 'dev']).optional(),
+  EMAIL_FROM: z.string().default('Support Desk <no-reply@example.com>'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: booleanFlag,
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
 
   UPLOAD_DIR: z.string().default('./uploads'),
   MAX_UPLOAD_SIZE_MB: z.coerce.number().positive().max(100).default(10),
@@ -59,6 +73,19 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
 
   const e = result.data;
   const isProduction = e.NODE_ENV === 'production';
+  const emailTransport = e.EMAIL_TRANSPORT ?? (isProduction ? 'smtp' : 'dev');
+  if (isProduction && emailTransport === 'dev') {
+    // The dev mailbox is unreachable in production, so emails would silently go nowhere.
+    throw new Error(
+      'Invalid environment configuration:\n  - EMAIL_TRANSPORT: "dev" is not allowed in production',
+    );
+  }
+  if (emailTransport === 'smtp' && !e.SMTP_HOST) {
+    throw new Error(
+      'Invalid environment configuration:\n  - SMTP_HOST: required when EMAIL_TRANSPORT=smtp ' +
+        '(set EMAIL_TRANSPORT=dev to keep emails in the dev mailbox instead)',
+    );
+  }
 
   return {
     ...e,
@@ -67,6 +94,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env) {
     COOKIE_SECURE: e.COOKIE_SECURE ?? isProduction,
     TRUST_PROXY: e.TRUST_PROXY ?? false,
     ALLOW_REGISTRATION: e.ALLOW_REGISTRATION ?? true,
+    ALLOW_COMPANY_SIGNUP: e.ALLOW_COMPANY_SIGNUP ?? true,
+    EMAIL_TRANSPORT: emailTransport,
+    SMTP_SECURE: e.SMTP_SECURE ?? e.SMTP_PORT === 465,
+    APP_URL: e.APP_URL.replace(/\/$/, ''),
+    /** The dev mailbox API is never exposed in production. */
+    devMailboxEnabled: emailTransport === 'dev' && !isProduction,
     SERVE_WEB: e.SERVE_WEB ?? false,
     corsOrigins: e.CORS_ORIGIN.split(',')
       .map((origin) => origin.trim())
